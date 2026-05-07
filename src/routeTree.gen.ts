@@ -15,6 +15,7 @@ import { Route as CommercialRouteImport } from './routes/commercial'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as SoldSlugRouteImport } from './routes/sold.$slug'
+import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
 import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
 import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
 import { Route as AdminListingsRouteImport } from './routes/admin.listings'
@@ -49,6 +50,11 @@ const SoldSlugRoute = SoldSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => SoldRoute,
 } as any)
+const PreviewSlugRoute = PreviewSlugRouteImport.update({
+  id: '/preview/$slug',
+  path: '/preview/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ListingsSlugRoute = ListingsSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
+  '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
+  '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
+  '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
+    | '/preview/$slug'
     | '/sold/$slug'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
+    | '/preview/$slug'
     | '/sold/$slug'
     | '/admin'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
+    | '/preview/$slug'
     | '/sold/$slug'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   SoldRoute: typeof SoldRouteWithChildren
   AdminListingsRoute: typeof AdminListingsRoute
   AdminRealtorsRoute: typeof AdminRealtorsRoute
+  PreviewSlugRoute: typeof PreviewSlugRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/sold/$slug'
       preLoaderRoute: typeof SoldSlugRouteImport
       parentRoute: typeof SoldRoute
+    }
+    '/preview/$slug': {
+      id: '/preview/$slug'
+      path: '/preview/$slug'
+      fullPath: '/preview/$slug'
+      preLoaderRoute: typeof PreviewSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/listings/$slug': {
       id: '/listings/$slug'
@@ -242,8 +262,19 @@ const rootRouteChildren: RootRouteChildren = {
   SoldRoute: SoldRouteWithChildren,
   AdminListingsRoute: AdminListingsRoute,
   AdminRealtorsRoute: AdminRealtorsRoute,
+  PreviewSlugRoute: PreviewSlugRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
