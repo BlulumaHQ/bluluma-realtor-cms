@@ -9,38 +9,165 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SoldRouteImport } from './routes/sold'
+import { Route as ListingsRouteImport } from './routes/listings'
+import { Route as CommercialRouteImport } from './routes/commercial'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as SoldSlugRouteImport } from './routes/sold.$slug'
+import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
+import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
+import { Route as AdminListingsRouteImport } from './routes/admin.listings'
 
+const SoldRoute = SoldRouteImport.update({
+  id: '/sold',
+  path: '/sold',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ListingsRoute = ListingsRouteImport.update({
+  id: '/listings',
+  path: '/listings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommercialRoute = CommercialRouteImport.update({
+  id: '/commercial',
+  path: '/commercial',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoldSlugRoute = SoldSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => SoldRoute,
+} as any)
+const ListingsSlugRoute = ListingsSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ListingsRoute,
+} as any)
+const AdminRealtorsRoute = AdminRealtorsRouteImport.update({
+  id: '/admin/realtors',
+  path: '/admin/realtors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminListingsRoute = AdminListingsRouteImport.update({
+  id: '/admin/listings',
+  path: '/admin/listings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/commercial': typeof CommercialRoute
+  '/listings': typeof ListingsRouteWithChildren
+  '/sold': typeof SoldRouteWithChildren
+  '/admin/listings': typeof AdminListingsRoute
+  '/admin/realtors': typeof AdminRealtorsRoute
+  '/listings/$slug': typeof ListingsSlugRoute
+  '/sold/$slug': typeof SoldSlugRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/commercial': typeof CommercialRoute
+  '/listings': typeof ListingsRouteWithChildren
+  '/sold': typeof SoldRouteWithChildren
+  '/admin/listings': typeof AdminListingsRoute
+  '/admin/realtors': typeof AdminRealtorsRoute
+  '/listings/$slug': typeof ListingsSlugRoute
+  '/sold/$slug': typeof SoldSlugRoute
+  '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/commercial': typeof CommercialRoute
+  '/listings': typeof ListingsRouteWithChildren
+  '/sold': typeof SoldRouteWithChildren
+  '/admin/listings': typeof AdminListingsRoute
+  '/admin/realtors': typeof AdminRealtorsRoute
+  '/listings/$slug': typeof ListingsSlugRoute
+  '/sold/$slug': typeof SoldSlugRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/commercial'
+    | '/listings'
+    | '/sold'
+    | '/admin/listings'
+    | '/admin/realtors'
+    | '/listings/$slug'
+    | '/sold/$slug'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/commercial'
+    | '/listings'
+    | '/sold'
+    | '/admin/listings'
+    | '/admin/realtors'
+    | '/listings/$slug'
+    | '/sold/$slug'
+    | '/admin'
+  id:
+    | '__root__'
+    | '/'
+    | '/commercial'
+    | '/listings'
+    | '/sold'
+    | '/admin/listings'
+    | '/admin/realtors'
+    | '/listings/$slug'
+    | '/sold/$slug'
+    | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CommercialRoute: typeof CommercialRoute
+  ListingsRoute: typeof ListingsRouteWithChildren
+  SoldRoute: typeof SoldRouteWithChildren
+  AdminListingsRoute: typeof AdminListingsRoute
+  AdminRealtorsRoute: typeof AdminRealtorsRoute
+  AdminIndexRoute: typeof AdminIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sold': {
+      id: '/sold'
+      path: '/sold'
+      fullPath: '/sold'
+      preLoaderRoute: typeof SoldRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/listings': {
+      id: '/listings'
+      path: '/listings'
+      fullPath: '/listings'
+      preLoaderRoute: typeof ListingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/commercial': {
+      id: '/commercial'
+      path: '/commercial'
+      fullPath: '/commercial'
+      preLoaderRoute: typeof CommercialRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +175,75 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sold/$slug': {
+      id: '/sold/$slug'
+      path: '/$slug'
+      fullPath: '/sold/$slug'
+      preLoaderRoute: typeof SoldSlugRouteImport
+      parentRoute: typeof SoldRoute
+    }
+    '/listings/$slug': {
+      id: '/listings/$slug'
+      path: '/$slug'
+      fullPath: '/listings/$slug'
+      preLoaderRoute: typeof ListingsSlugRouteImport
+      parentRoute: typeof ListingsRoute
+    }
+    '/admin/realtors': {
+      id: '/admin/realtors'
+      path: '/admin/realtors'
+      fullPath: '/admin/realtors'
+      preLoaderRoute: typeof AdminRealtorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/listings': {
+      id: '/admin/listings'
+      path: '/admin/listings'
+      fullPath: '/admin/listings'
+      preLoaderRoute: typeof AdminListingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface ListingsRouteChildren {
+  ListingsSlugRoute: typeof ListingsSlugRoute
+}
+
+const ListingsRouteChildren: ListingsRouteChildren = {
+  ListingsSlugRoute: ListingsSlugRoute,
+}
+
+const ListingsRouteWithChildren = ListingsRoute._addFileChildren(
+  ListingsRouteChildren,
+)
+
+interface SoldRouteChildren {
+  SoldSlugRoute: typeof SoldSlugRoute
+}
+
+const SoldRouteChildren: SoldRouteChildren = {
+  SoldSlugRoute: SoldSlugRoute,
+}
+
+const SoldRouteWithChildren = SoldRoute._addFileChildren(SoldRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CommercialRoute: CommercialRoute,
+  ListingsRoute: ListingsRouteWithChildren,
+  SoldRoute: SoldRouteWithChildren,
+  AdminListingsRoute: AdminListingsRoute,
+  AdminRealtorsRoute: AdminRealtorsRoute,
+  AdminIndexRoute: AdminIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
