@@ -40,6 +40,18 @@ export const getRealtorByHost = createServerFn({ method: "GET" })
     return { realtor: realtor as Realtor | null, host };
   });
 
+export const getRealtorBySlug = createServerFn({ method: "GET" })
+  .inputValidator((data: { slug: string }) => data)
+  .handler(async ({ data }) => {
+    const supabase = sb();
+    const { data: realtor } = await supabase
+      .from("realtors")
+      .select("*")
+      .eq("slug", data.slug)
+      .maybeSingle();
+    return { realtor: realtor as Realtor | null };
+  });
+
 export const getHomeData = createServerFn({ method: "GET" })
   .inputValidator((data: { realtorId: string }) => data)
   .handler(async ({ data }) => {

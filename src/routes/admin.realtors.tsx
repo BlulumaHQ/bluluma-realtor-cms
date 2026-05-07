@@ -40,7 +40,12 @@ function Page() {
                 <div className="text-sm text-muted-foreground">{r.brokerage_name} · {r.slug}</div>
               </div>
             </div>
-            <button onClick={() => { setCreating(false); setEditing(r); }} className="text-sm text-accent">Edit →</button>
+            <div className="flex items-center gap-3">
+              {r.slug && (
+                <a href={`/preview/${r.slug}`} target="_blank" rel="noreferrer" className="text-sm text-accent">Preview Site ↗</a>
+              )}
+              <button onClick={() => { setCreating(false); setEditing(r); }} className="text-sm text-accent">Edit →</button>
+            </div>
           </div>
         ))}
       </div>
