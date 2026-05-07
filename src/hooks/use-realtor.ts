@@ -16,7 +16,7 @@ export function useRealtor() {
     enabled: !ctx?.realtor,
   });
   if (ctx?.realtor) {
-    return { data: { realtor: ctx.realtor, host: "preview" }, isLoading: false } as ReturnType<typeof useQuery<{ realtor: typeof ctx.realtor; host: string }>>;
+    return { data: { realtor: ctx.realtor, host: "preview" }, isLoading: false, isError: false } as const;
   }
-  return query;
+  return { data: query.data, isLoading: query.isLoading, isError: query.isError } as const;
 }
