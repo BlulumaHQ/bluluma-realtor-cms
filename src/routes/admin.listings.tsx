@@ -101,7 +101,7 @@ function ListingEditor({
   const data = useQuery({
     queryKey: ["a-listing", listingId],
     queryFn: () => get({ data: { id: listingId } }),
-    enabled: !isNew && !!password,
+    enabled: !isNew,
   });
 
   const [l, setL] = useState<Partial<Listing>>(
