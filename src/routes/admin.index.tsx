@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AdminShell } from "@/components/admin-shell";
-import { useAdminPassword } from "@/hooks/use-admin";
 import { adminListRealtors, adminListListings } from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/admin/")({ component: Page });
@@ -16,11 +15,10 @@ function Page() {
 }
 
 function Inner() {
-  const { password } = useAdminPassword();
   const lr = useServerFn(adminListRealtors);
   const ll = useServerFn(adminListListings);
-  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: { password: password! } }), enabled: !!password });
-  const listings = useQuery({ queryKey: ["a-listings"], queryFn: () => ll({ data: { password: password! } }), enabled: !!password });
+  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: {} }), enabled: true });
+  const listings = useQuery({ queryKey: ["a-listings"], queryFn: () => ll({ data: {} }), enabled: true });
 
   return (
     <div className="space-y-10">
