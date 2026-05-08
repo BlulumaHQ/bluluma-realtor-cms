@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://pnstqwyuhdzdmodeqvid.supabase.co";
+export const SUPABASE_URL = "https://pnstqwyuhdzdmodeqvid.supabase.co";
 
 export function getAdminClient() {
   const key = process.env.SERVICE_ROLE_KEY;
