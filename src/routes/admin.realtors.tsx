@@ -69,6 +69,56 @@ function Page() {
   );
 }
 
+function SupabaseDebugPanel({
+  loading,
+  error,
+  debug,
+}: {
+  loading: boolean;
+  error: unknown;
+  debug?: {
+    supabaseUrl: string;
+    viteSupabaseUrlExists: boolean;
+    viteSupabasePublishableKeyExists: boolean;
+    serviceRoleKeyExists: boolean;
+    exactQuery: string;
+    rowsReturned: number;
+    error: string | null;
+    dataSource: string;
+  };
+}) {
+  const routeError = error instanceof Error ? `${error.name}: ${error.message}` : error ? String(error) : null;
+  const fullError = debug?.error ?? routeError ?? "None";
+
+  return (
+    <div className="border border-border bg-card p-5 shadow-card">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="font-display text-xl">Supabase Debug</h2>
+        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{loading ? "Loading" : "Loaded"}</div>
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+        <DebugItem label="Supabase URL being used" value={debug?.supabaseUrl ?? "Loading…"} />
+        <DebugItem label="VITE_SUPABASE_URL exists" value={String(debug?.viteSupabaseUrlExists ?? false)} />
+        <DebugItem label="VITE_SUPABASE_PUBLISHABLE_KEY exists" value={String(debug?.viteSupabasePublishableKeyExists ?? false)} />
+        <DebugItem label="SERVICE_ROLE_KEY exists server-side" value={String(debug?.serviceRoleKeyExists ?? false)} />
+        <DebugItem label="Exact query" value={debug?.exactQuery ?? "select * from realtors order by created_at desc"} wide />
+        <DebugItem label="Number of rows returned" value={String(debug?.rowsReturned ?? 0)} />
+        <DebugItem label="Data source" value={debug?.dataSource ?? "real Supabase data"} />
+        <DebugItem label="Full Supabase error message" value={fullError} wide />
+      </dl>
+    </div>
+  );
+}
+
+function DebugItem({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? "md:col-span-2" : undefined}>
+      <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words font-mono text-sm text-foreground whitespace-pre-wrap">{value}</dd>
+    </div>
+  );
+}
+
 function RealtorEditor({ realtor, isNew, onClose }: { realtor: Realtor; isNew: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [r, setR] = useState<Partial<Realtor>>(realtor);
