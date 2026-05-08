@@ -5,7 +5,7 @@ import { useState } from "react";
 import { AdminShell } from "@/components/admin-shell";
 import { fileToBase64 } from "@/hooks/use-admin";
 import {
-  adminListRealtors, adminUpsertRealtor,
+  adminListRealtorsDebug, adminUpsertRealtor,
   adminListDomains, adminUpsertDomain, adminDeleteDomain,
   adminUpload,
 } from "@/lib/admin.functions";
@@ -14,10 +14,12 @@ import type { Realtor } from "@/lib/types";
 export const Route = createFileRoute("/admin/realtors")({ component: () => <AdminShell><Page /></AdminShell> });
 
 function Page() {
-  const lr = useServerFn(adminListRealtors);
+  const lr = useServerFn(adminListRealtorsDebug);
   const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: {} }), enabled: true });
   const [editing, setEditing] = useState<Realtor | null>(null);
   const [creating, setCreating] = useState(false);
+  const rows = realtors.data?.rows ?? [];
+  const debug = realtors.data?.debug;
 
   return (
     <div className="space-y-8">
@@ -29,8 +31,14 @@ function Page() {
         <button onClick={() => { setCreating(true); setEditing({} as Realtor); }} className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em]">+ New realtor</button>
       </div>
 
+      <SupabaseDebugPanel
+        loading={realtors.isLoading}
+        error={realtors.error}
+        debug={debug}
+      />
+
       <div className="bg-card shadow-card divide-y divide-border">
-        {(realtors.data ?? []).map((r) => (
+        {rows.map((r) => (
           <div key={r.id} className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               {r.headshot_url && <img src={r.headshot_url} className="h-12 w-12 rounded-full object-cover" />}
@@ -47,6 +55,7 @@ function Page() {
             </div>
           </div>
         ))}
+        {rows.length === 0 && !realtors.isLoading && <div className="p-8 text-muted-foreground text-center">No realtors returned from Supabase.</div>}
       </div>
 
       {editing && (
