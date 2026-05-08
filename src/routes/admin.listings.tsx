@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { AdminShell } from "@/components/admin-shell";
-import { useAdminPassword, fileToBase64 } from "@/hooks/use-admin";
+import { fileToBase64 } from "@/hooks/use-admin";
 import {
   adminListRealtors, adminListListings, adminGetListing,
   adminUpsertListing, adminDeleteListing,
@@ -14,15 +14,14 @@ import type { Listing } from "@/lib/types";
 export const Route = createFileRoute("/admin/listings")({ component: () => <AdminShell><Page /></AdminShell> });
 
 function Page() {
-  const { password } = useAdminPassword();
   const lr = useServerFn(adminListRealtors);
   const ll = useServerFn(adminListListings);
-  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: { password: password! } }), enabled: !!password });
+  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: {} }), enabled: true });
   const [realtorId, setRealtorId] = useState<string>("");
   const listings = useQuery({
     queryKey: ["a-listings", realtorId],
-    queryFn: () => ll({ data: { password: password!, realtorId: realtorId || undefined } }),
-    enabled: !!password,
+    queryFn: () => ll({ data: { realtorId: realtorId || undefined } }),
+    enabled: true,
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,7 +90,6 @@ function ListingEditor({
   listingId: string; isNew: boolean; defaultRealtorId: string;
   realtors: { id: string; name: string }[]; onClose: () => void;
 }) {
-  const { password } = useAdminPassword();
   const qc = useQueryClient();
   const get = useServerFn(adminGetListing);
   const upsert = useServerFn(adminUpsertListing);
@@ -102,7 +100,7 @@ function ListingEditor({
 
   const data = useQuery({
     queryKey: ["a-listing", listingId],
-    queryFn: () => get({ data: { password: password!, id: listingId } }),
+    queryFn: () => get({ data: { id: listingId } }),
     enabled: !isNew && !!password,
   });
 
@@ -118,7 +116,7 @@ function ListingEditor({
 
   const save = async () => {
     const payload = isNew ? l : { id: data.data!.listing.id, ...l };
-    const saved = await upsert({ data: { password: password!, listing: payload } });
+    const saved = await upsert({ data: { listing: payload } });
     if (isNew) { setL({}); qc.invalidateQueries({ queryKey: ["a-listings"] }); onClose(); return; }
     qc.invalidateQueries({ queryKey: ["a-listing", saved.id] });
     qc.invalidateQueries({ queryKey: ["a-listings"] });
@@ -127,18 +125,18 @@ function ListingEditor({
 
   const remove = async () => {
     if (!confirm("Delete listing?")) return;
-    await del({ data: { password: password!, id: data.data!.listing.id } });
+    await del({ data: { id: data.data!.listing.id } });
     onClose();
   };
 
   const uploadPhoto = async (file: File, primary = false) => {
     const base64 = await fileToBase64(file);
     const path = `${current.realtor_id}/${current.slug ?? listingId}/${Date.now()}-${file.name}`;
-    const { url } = await upload({ data: { password: password!, bucket: "listing-photos", path, contentType: file.type, base64 } });
+    const { url } = await upload({ data: { bucket: "listing-photos", path, contentType: file.type, base64 } });
     if (primary) {
       update({ primary_image_url: url });
     } else if (!isNew) {
-      await addPhoto({ data: { password: password!, listingId: data.data!.listing.id, image_url: url, sort_order: (data.data!.photos.length ?? 0) } });
+      await addPhoto({ data: { listingId: data.data!.listing.id, image_url: url, sort_order: (data.data!.photos.length ?? 0) } });
       data.refetch();
     }
   };
@@ -146,7 +144,7 @@ function ListingEditor({
   const uploadPdf = async (file: File) => {
     const base64 = await fileToBase64(file);
     const path = `${current.realtor_id}/${current.slug ?? listingId}/${Date.now()}-${file.name}`;
-    const { url } = await upload({ data: { password: password!, bucket: "listing-pdfs", path, contentType: file.type, base64 } });
+    const { url } = await upload({ data: { bucket: "listing-pdfs", path, contentType: file.type, base64 } });
     update({ pdf_url: url });
   };
 
@@ -250,7 +248,7 @@ function ListingEditor({
                 <div key={p.id} className="relative aspect-[4/3] bg-muted">
                   <img src={p.image_url} className="h-full w-full object-cover" />
                   <button
-                    onClick={async () => { await delPhoto({ data: { password: password!, id: p.id } }); data.refetch(); }}
+                    onClick={async () => { await delPhoto({ data: { id: p.id } }); data.refetch(); }}
                     className="absolute top-1 right-1 bg-foreground text-background text-xs px-2 py-1"
                   >×</button>
                 </div>

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { AdminShell } from "@/components/admin-shell";
-import { useAdminPassword, fileToBase64 } from "@/hooks/use-admin";
+import { fileToBase64 } from "@/hooks/use-admin";
 import {
   adminListRealtors, adminUpsertRealtor,
   adminListDomains, adminUpsertDomain, adminDeleteDomain,
@@ -14,9 +14,8 @@ import type { Realtor } from "@/lib/types";
 export const Route = createFileRoute("/admin/realtors")({ component: () => <AdminShell><Page /></AdminShell> });
 
 function Page() {
-  const { password } = useAdminPassword();
   const lr = useServerFn(adminListRealtors);
-  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: { password: password! } }), enabled: !!password });
+  const realtors = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: {} }), enabled: true });
   const [editing, setEditing] = useState<Realtor | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -62,14 +61,13 @@ function Page() {
 }
 
 function RealtorEditor({ realtor, isNew, onClose }: { realtor: Realtor; isNew: boolean; onClose: () => void }) {
-  const { password } = useAdminPassword();
   const qc = useQueryClient();
   const [r, setR] = useState<Partial<Realtor>>(realtor);
   const upsert = useServerFn(adminUpsertRealtor);
   const upload = useServerFn(adminUpload);
 
   const save = async () => {
-    await upsert({ data: { password: password!, realtor: r } });
+    await upsert({ data: { realtor: r } });
     qc.invalidateQueries({ queryKey: ["a-realtors"] });
     onClose();
   };
@@ -77,7 +75,7 @@ function RealtorEditor({ realtor, isNew, onClose }: { realtor: Realtor; isNew: b
   const uploadAsset = async (file: File, kind: "logo" | "headshot") => {
     const base64 = await fileToBase64(file);
     const path = `${r.slug ?? "realtor"}/${kind}-${Date.now()}-${file.name}`;
-    const { url } = await upload({ data: { password: password!, bucket: "realtor-assets", path, contentType: file.type, base64 } });
+    const { url } = await upload({ data: { bucket: "realtor-assets", path, contentType: file.type, base64 } });
     setR((s) => ({ ...s, [kind === "logo" ? "logo_url" : "headshot_url"]: url }));
   };
 
@@ -136,17 +134,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function DomainsPanel({ realtorId }: { realtorId: string }) {
-  const { password } = useAdminPassword();
   const ld = useServerFn(adminListDomains);
   const ud = useServerFn(adminUpsertDomain);
   const dd = useServerFn(adminDeleteDomain);
-  const domains = useQuery({ queryKey: ["a-domains", realtorId], queryFn: () => ld({ data: { password: password!, realtorId } }) });
+  const domains = useQuery({ queryKey: ["a-domains", realtorId], queryFn: () => ld({ data: { realtorId } }) });
   const [d, setD] = useState("");
   const [t, setT] = useState("production");
 
   const add = async () => {
     if (!d.trim()) return;
-    await ud({ data: { password: password!, domain: { realtor_id: realtorId, domain: d, domain_type: t, is_primary: false } } });
+    await ud({ data: { domain: { realtor_id: realtorId, domain: d, domain_type: t, is_primary: false } } });
     setD("");
     domains.refetch();
   };
@@ -158,7 +155,7 @@ function DomainsPanel({ realtorId }: { realtorId: string }) {
         {(domains.data ?? []).map((row) => (
           <div key={row.id} className="flex items-center justify-between bg-card px-4 h-11 border border-border">
             <div className="text-sm"><span className="font-medium">{row.domain}</span> <span className="text-muted-foreground">· {row.domain_type}</span></div>
-            <button onClick={async () => { await dd({ data: { password: password!, id: row.id } }); domains.refetch(); }} className="text-destructive text-sm">Delete</button>
+            <button onClick={async () => { await dd({ data: { id: row.id } }); domains.refetch(); }} className="text-destructive text-sm">Delete</button>
           </div>
         ))}
       </div>
