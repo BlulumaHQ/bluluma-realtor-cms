@@ -5,7 +5,7 @@ import type { Realtor, Listing, ListingPhoto, RealtorDomain } from "./types";
 
 const PROJECT_URL = SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_aN7LwltKQzntPyc4_moyQg_XSWARdPD";
-const REALTOR_QUERY = "select * from realtors order by created_at desc";
+const REALTOR_QUERY = "select * from realtors order by name asc";
 
 type OptionalAdminInput = { password?: string } | undefined;
 type RealtorListDebug = {
