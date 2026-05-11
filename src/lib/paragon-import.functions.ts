@@ -144,12 +144,10 @@ function parseHtml(html: string, sourceUrl: string): Parsed {
 
   const beds =
     ld?.numberOfBedrooms ??
-    Number(text.match(/(\d+)\s*(?:bed|bd|bedroom)/i)?.[1] ?? "") ||
-    null;
+    (Number(text.match(/(\d+)\s*(?:bed|bd|bedroom)/i)?.[1] ?? "") || null);
   const baths =
     ld?.numberOfBathroomsTotal ??
-    Number(text.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[1] ?? "") ||
-    null;
+    (Number(text.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[1] ?? "") || null);
   const sqftMatch = text.match(/([\d,]{3,})\s*(?:sq\.?\s*ft|sqft|square\s+feet)/i);
   const sqft = sqftMatch ? Number(sqftMatch[1].replace(/,/g, "")) : null;
   const lot = text.match(/lot\s*size[:\s]*([\d.,]+\s*(?:sq\s*ft|acres?|ac))/i)?.[1] ?? null;
