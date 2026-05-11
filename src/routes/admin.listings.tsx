@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -39,6 +39,12 @@ function Page() {
             <option value="">All realtors</option>
             {(realtors.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          <Link
+            to="/admin/import-listing"
+            className="px-5 h-10 inline-flex items-center border border-foreground text-sm uppercase tracking-[0.18em]"
+          >
+            Import from Paragon Link
+          </Link>
           <button
             onClick={() => { setCreating(true); setEditingId("new"); }}
             disabled={!realtorId && (realtors.data ?? []).length === 0}
