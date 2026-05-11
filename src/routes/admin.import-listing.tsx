@@ -155,8 +155,10 @@ function Page() {
             disabled={parsing}
             className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em] disabled:opacity-50"
           >
-            {parsing ? "Importing…" : "Import Listing"}
+            {parsing ? "Extracting…" : "Test Extraction"}
           </button>
+          <p className="text-xs text-muted-foreground mt-1">
+            Fetches and renders the Paragon page (headless when needed). Shows parsed fields for review — nothing is saved until you click <strong>Save Listing</strong>.</p>
           <style>{`.input{width:100%;height:2.75rem;padding:0 .75rem;border:1px solid var(--border);background:var(--background)}`}</style>
         </div>
       ) : (
@@ -218,16 +220,75 @@ function Page() {
             </p>
           </div>
 
-          <details className="bg-muted/40 p-4 text-xs font-mono">
-            <summary className="cursor-pointer">Debug info</summary>
-            <div className="mt-3 space-y-2 whitespace-pre-wrap break-all">
-              <div><strong>Source URL:</strong> {parsed.source_url}</div>
-              <div><strong>Images found:</strong> {parsed.image_urls.length}</div>
-              <div><strong>Parse warnings:</strong> {parsed.parse_warnings.join("; ") || "none"}</div>
-              <div><strong>Extracted fields:</strong></div>
-              <pre>{JSON.stringify(parsed, null, 2)}</pre>
+          <div className="bg-card shadow-card p-6 space-y-4">
+            <h3 className="font-display text-xl">Parser diagnostics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs font-mono">
+              <Diag k="Fetch success" v={String(parsed.diagnostics.fetch_success)} />
+              <Diag k="HTTP status" v={String(parsed.diagnostics.plain_fetch_status ?? "—")} />
+              <Diag k="HTML returned" v={String(parsed.diagnostics.html_returned)} />
+              <Diag k="HTML length" v={String(parsed.diagnostics.html_length)} />
+              <Diag k="Page blocked" v={String(parsed.diagnostics.page_blocked)} />
+              <Diag k="Rendering" v={parsed.diagnostics.rendering_type} />
+              <Diag k="Firecrawl used" v={String(parsed.diagnostics.firecrawl_used)} />
+              <Diag k="Gallery images" v={String(parsed.diagnostics.gallery_images_detected)} />
+              <Diag k="Images found" v={String(parsed.image_urls.length)} />
             </div>
-          </details>
+            {parsed.diagnostics.firecrawl_error && (
+              <div className="text-destructive text-xs font-mono">Firecrawl error: {parsed.diagnostics.firecrawl_error}</div>
+            )}
+            {parsed.parse_warnings.length > 0 && (
+              <div className="text-amber-700 text-xs">Warnings: {parsed.parse_warnings.join("; ")}</div>
+            )}
+
+            <details className="text-xs font-mono">
+              <summary className="cursor-pointer">Matched / failed selectors</summary>
+              <div className="mt-2 grid grid-cols-2 gap-1">
+                {Object.entries(parsed.matched_selectors).map(([k, v]) => (
+                  <div key={k} className={v ? "text-emerald-700" : "text-destructive"}>
+                    {v ? "✓" : "✗"} {k}
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <details className="text-xs font-mono">
+              <summary className="cursor-pointer">Detected image URLs ({parsed.image_urls.length})</summary>
+              <ul className="mt-2 space-y-1 break-all">
+                {parsed.image_urls.slice(0, 30).map((u) => <li key={u}>{u}</li>)}
+              </ul>
+            </details>
+
+            <details className="text-xs font-mono">
+              <summary className="cursor-pointer">Detected text blocks ({parsed.detected_text_blocks.length})</summary>
+              <ul className="mt-2 space-y-1">
+                {parsed.detected_text_blocks.map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
+            </details>
+
+            <details className="text-xs font-mono">
+              <summary className="cursor-pointer">Raw HTML preview (first 3000 chars)</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all bg-background p-2 border border-border max-h-80 overflow-auto">{parsed.html_preview}</pre>
+            </details>
+
+            {parsed.markdown_preview && (
+              <details className="text-xs font-mono">
+                <summary className="cursor-pointer">Rendered markdown preview</summary>
+                <pre className="mt-2 whitespace-pre-wrap bg-background p-2 border border-border max-h-80 overflow-auto">{parsed.markdown_preview}</pre>
+              </details>
+            )}
+
+            {parsed.diagnostics.screenshot_url && (
+              <details className="text-xs font-mono">
+                <summary className="cursor-pointer">Page screenshot</summary>
+                <img src={parsed.diagnostics.screenshot_url} alt="page screenshot" className="mt-2 max-w-full border border-border" />
+              </details>
+            )}
+
+            <details className="text-xs font-mono">
+              <summary className="cursor-pointer">Full extracted JSON</summary>
+              <pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(parsed, null, 2)}</pre>
+            </details>
+          </div>
 
           {error && <div className="text-destructive text-sm whitespace-pre-wrap">{error}</div>}
 
@@ -255,5 +316,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1 mt-3">{label}</div>
       {children}
     </label>
+  );
+}
+
+function Diag({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="border border-border p-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div>
+      <div>{v}</div>
+    </div>
   );
 }
