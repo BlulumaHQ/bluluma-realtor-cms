@@ -46,6 +46,19 @@ function getAllMeta(html: string, prop: string): string[] {
   return out;
 }
 
+type Diagnostics = {
+  fetch_success: boolean;
+  html_returned: boolean;
+  html_length: number;
+  page_blocked: boolean;
+  rendering_type: "server-side" | "client-side" | "unknown";
+  gallery_images_detected: boolean;
+  firecrawl_used: boolean;
+  firecrawl_error: string | null;
+  plain_fetch_status: number | null;
+  screenshot_url: string | null;
+};
+
 type Parsed = {
   title: string | null;
   address: string | null;
@@ -66,9 +79,20 @@ type Parsed = {
   pdf_url: string | null;
   source_url: string;
   parse_warnings: string[];
+  diagnostics: Diagnostics;
+  html_preview: string;
+  detected_text_blocks: string[];
+  matched_selectors: Record<string, boolean>;
+  failed_selectors: string[];
+  markdown_preview: string | null;
 };
 
-function parseHtml(html: string, sourceUrl: string): Parsed {
+function parseFromContent(
+  html: string,
+  markdown: string | null,
+  sourceUrl: string,
+  diagnostics: Diagnostics,
+): Parsed {
   const warnings: string[] = [];
   const ogTitle = getMeta(html, "og:title") ?? getMeta(html, "twitter:title");
   const ogDesc = getMeta(html, "og:description") ?? getMeta(html, "description");
