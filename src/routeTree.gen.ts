@@ -19,7 +19,6 @@ import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
 import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
 import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
 import { Route as AdminListingsRouteImport } from './routes/admin.listings'
-import { Route as AdminImportListingRouteImport } from './routes/admin.import-listing'
 import { Route as AdminImportRouteImport } from './routes/admin.import'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 
@@ -73,11 +72,6 @@ const AdminListingsRoute = AdminListingsRouteImport.update({
   path: '/admin/listings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminImportListingRoute = AdminImportListingRouteImport.update({
-  id: '/admin/import-listing',
-  path: '/admin/import-listing',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminImportRoute = AdminImportRouteImport.update({
   id: '/admin/import',
   path: '/admin/import',
@@ -96,7 +90,6 @@ export interface FileRoutesByFullPath {
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
-  '/admin/import-listing': typeof AdminImportListingRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -111,7 +104,6 @@ export interface FileRoutesByTo {
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
-  '/admin/import-listing': typeof AdminImportListingRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -127,7 +119,6 @@ export interface FileRoutesById {
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
-  '/admin/import-listing': typeof AdminImportListingRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -144,7 +135,6 @@ export interface FileRouteTypes {
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
-    | '/admin/import-listing'
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
@@ -159,7 +149,6 @@ export interface FileRouteTypes {
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
-    | '/admin/import-listing'
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
@@ -174,7 +163,6 @@ export interface FileRouteTypes {
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
-    | '/admin/import-listing'
     | '/admin/listings'
     | '/admin/realtors'
     | '/listings/$slug'
@@ -190,7 +178,6 @@ export interface RootRouteChildren {
   SoldRoute: typeof SoldRouteWithChildren
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminImportRoute: typeof AdminImportRoute
-  AdminImportListingRoute: typeof AdminImportListingRoute
   AdminListingsRoute: typeof AdminListingsRoute
   AdminRealtorsRoute: typeof AdminRealtorsRoute
   PreviewSlugRoute: typeof PreviewSlugRoute
@@ -269,13 +256,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminListingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/import-listing': {
-      id: '/admin/import-listing'
-      path: '/admin/import-listing'
-      fullPath: '/admin/import-listing'
-      preLoaderRoute: typeof AdminImportListingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin/import': {
       id: '/admin/import'
       path: '/admin/import'
@@ -322,7 +302,6 @@ const rootRouteChildren: RootRouteChildren = {
   SoldRoute: SoldRouteWithChildren,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminImportRoute: AdminImportRoute,
-  AdminImportListingRoute: AdminImportListingRoute,
   AdminListingsRoute: AdminListingsRoute,
   AdminRealtorsRoute: AdminRealtorsRoute,
   PreviewSlugRoute: PreviewSlugRoute,
@@ -331,3 +310,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
