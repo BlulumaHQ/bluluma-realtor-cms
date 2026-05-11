@@ -40,7 +40,7 @@ function Page() {
             {(realtors.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
           <Link
-            to="/admin/import-listing"
+            to="/admin/import"
             className="px-5 h-10 inline-flex items-center border border-foreground text-sm uppercase tracking-[0.18em]"
           >
             Import from Paragon Link

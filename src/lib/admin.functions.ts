@@ -5,7 +5,7 @@ import type { Realtor, Listing, ListingPhoto, RealtorDomain } from "./types";
 
 const PROJECT_URL = SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_aN7LwltKQzntPyc4_moyQg_XSWARdPD";
-const REALTOR_QUERY = "select * from realtors order by created_at desc";
+const REALTOR_QUERY = "select * from realtors order by name asc";
 
 type OptionalAdminInput = { password?: string } | undefined;
 type RealtorListDebug = {
@@ -56,7 +56,7 @@ async function readRealtorsWithDebug() {
     const { data: rows, error } = await sb
       .from("realtors")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("name", { ascending: true });
 
     if (error) {
       debug.error = formatSupabaseError(error);
@@ -72,7 +72,7 @@ async function readRealtorsWithDebug() {
   const { data: publicRows, error: publicError } = await publicClient
     .from("realtors")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("name", { ascending: true });
 
   if (publicError) {
     debug.error = [debug.error, `Publishable key fallback: ${formatSupabaseError(publicError)}`]
@@ -105,6 +105,40 @@ export const adminListRealtorsDebug = createServerFn({ method: "POST" })
   .inputValidator((d: OptionalAdminInput) => d ?? {})
   .handler(async () => {
     return readRealtorsWithDebug();
+  });
+
+export const adminDashboardStats = createServerFn({ method: "POST" })
+  .inputValidator((d: OptionalAdminInput) => d ?? {})
+  .handler(async () => {
+    const sb = getAdminClient();
+    const [realtorsRes, listingsRes, recentRes] = await Promise.all([
+      sb.from("realtors").select("id,name,slug,brokerage_name,headshot_url,brand_color"),
+      sb.from("listings").select("id,status,category,featured,show_in_sold"),
+      sb.from("listings").select("*").order("created_at", { ascending: false }).limit(8),
+    ]);
+    const realtors = (realtorsRes.data ?? []) as Realtor[];
+    const listings = (listingsRes.data ?? []) as Listing[];
+    const recent = (recentRes.data ?? []) as Listing[];
+
+    const counts = {
+      realtors: realtors.length,
+      listings: listings.length,
+      featured: listings.filter((l) => l.featured && l.status !== "sold").length,
+      sold: listings.filter((l) => l.status === "sold" || l.show_in_sold).length,
+      commercial: listings.filter((l) => l.category === "commercial").length,
+    };
+    const perRealtor: Record<string, number> = {};
+    for (const l of listings) {
+      perRealtor[(l as any).realtor_id] = (perRealtor[(l as any).realtor_id] ?? 0) + 1;
+    }
+    // refetch realtor_id for listing counts since we trimmed columns
+    const { data: rl } = await sb.from("listings").select("realtor_id");
+    const byRealtor: Record<string, number> = {};
+    for (const row of rl ?? []) {
+      const rid = (row as any).realtor_id as string;
+      byRealtor[rid] = (byRealtor[rid] ?? 0) + 1;
+    }
+    return { counts, realtors, recent, listingCountByRealtor: byRealtor };
   });
 
 export const adminUpsertRealtor = createServerFn({ method: "POST" })
