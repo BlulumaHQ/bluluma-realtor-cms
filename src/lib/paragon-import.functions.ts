@@ -220,30 +220,114 @@ function parseFromContent(
     }
   }
 
+  // Augment with markdown content if available
+  const md = markdown ?? "";
+  const mdPrice = !price ? md.match(/\$\s?([\d,]{4,})\b/)?.[1] : null;
+  const finalPrice = price ?? (mdPrice ? Number(mdPrice.replace(/,/g, "")) : null);
+
+  const finalBeds = beds ?? (Number(md.match(/(\d+)\s*(?:bed|bd|bedroom)/i)?.[1] ?? "") || null);
+  const finalBaths = baths ?? (Number(md.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[1] ?? "") || null);
+  const finalSqft = sqft ?? (Number(md.match(/([\d,]{3,})\s*(?:sq\.?\s*ft|sqft|square\s+feet)/i)?.[1]?.replace(/,/g, "") ?? "") || null);
+  const finalMls = mls ?? md.match(/MLS\s*#?\s*[:\-]?\s*([A-Z0-9-]{4,})/i)?.[1] ?? null;
+
+  const detected_text_blocks: string[] = [];
+  const blockRe = /<(h1|h2|h3|p)[^>]*>([\s\S]*?)<\/\1>/gi;
+  let bm;
+  while ((bm = blockRe.exec(html)) && detected_text_blocks.length < 25) {
+    const v = stripTags(bm[2]);
+    if (v.length >= 4 && v.length < 400) detected_text_blocks.push(`[${bm[1]}] ${v}`);
+  }
+
+  const matched_selectors: Record<string, boolean> = {
+    "og:title": !!ogTitle,
+    "og:description": !!ogDesc,
+    "og:image": !!ogImage,
+    "json-ld": !!ld,
+    "title-tag": !!titleTag,
+    "price-regex": !!finalPrice,
+    "beds-regex": !!finalBeds,
+    "baths-regex": !!finalBaths,
+    "sqft-regex": !!finalSqft,
+    "mls-regex": !!finalMls,
+    "img-tags": images.size > 0,
+    "li-features": features.length > 0,
+    "pdf-link": !!pdfUrl,
+  };
+  const failed_selectors = Object.entries(matched_selectors).filter(([, v]) => !v).map(([k]) => k);
+
   if (images.size === 0) warnings.push("No images detected on page.");
   if (!address) warnings.push("Could not detect address.");
-  if (!price) warnings.push("Could not detect price.");
+  if (!finalPrice) warnings.push("Could not detect price.");
+  if (html.length > 0 && html.length < 5000 && !ld) {
+    warnings.push("Page HTML is very small — likely client-side rendered.");
+  }
+
+  diagnostics.gallery_images_detected = images.size >= 3;
 
   return {
     title: ogTitle ?? titleTag,
     address,
     city,
-    price: price && Number.isFinite(price) ? Number(price) : null,
+    price: finalPrice && Number.isFinite(finalPrice) ? Number(finalPrice) : null,
     status,
     category: /commercial|office|retail|industrial|warehouse/i.test(text) ? "commercial" : "residential",
     transaction_type: transaction,
     property_type: typeof propType === "string" ? propType : null,
-    beds: beds && Number.isFinite(beds) ? Number(beds) : null,
-    baths: baths && Number.isFinite(baths) ? Number(baths) : null,
-    sqft,
+    beds: finalBeds && Number.isFinite(finalBeds) ? Number(finalBeds) : null,
+    baths: finalBaths && Number.isFinite(finalBaths) ? Number(finalBaths) : null,
+    sqft: finalSqft,
     lot_size: lot,
-    mls_number: mls,
+    mls_number: finalMls,
     description: ogDesc,
     features,
     image_urls: Array.from(images),
     pdf_url: pdfUrl,
     source_url: sourceUrl,
     parse_warnings: warnings,
+    diagnostics,
+    html_preview: html.slice(0, 3000),
+    detected_text_blocks,
+    matched_selectors,
+    failed_selectors,
+    markdown_preview: markdown ? markdown.slice(0, 3000) : null,
+  };
+}
+
+type FirecrawlResult = {
+  html: string;
+  markdown: string | null;
+  links: string[];
+  screenshot: string | null;
+};
+
+async function firecrawlScrape(url: string): Promise<FirecrawlResult> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) throw new Error("FIRECRAWL_API_KEY not configured");
+  const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url,
+      formats: ["markdown", "html", "links", "screenshot"],
+      onlyMainContent: false,
+      waitFor: 3500,
+      timeout: 45000,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Firecrawl ${res.status}: ${t.slice(0, 300)}`);
+  }
+  const json: any = await res.json();
+  const d = json?.data ?? json;
+  return {
+    html: d?.html ?? d?.rawHtml ?? "",
+    markdown: d?.markdown ?? null,
+    links: Array.isArray(d?.links) ? d.links : [],
+    screenshot: d?.screenshot ?? null,
   };
 }
 
@@ -254,22 +338,75 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
     if (!/^https?:\/\//i.test(url)) {
       throw new Error("Invalid URL. Must start with http(s)://");
     }
-    let html = "";
+
+    const diagnostics: Diagnostics = {
+      fetch_success: false,
+      html_returned: false,
+      html_length: 0,
+      page_blocked: false,
+      rendering_type: "unknown",
+      gallery_images_detected: false,
+      firecrawl_used: false,
+      firecrawl_error: null,
+      plain_fetch_status: null,
+      screenshot_url: null,
+    };
+
+    let plainHtml = "";
     try {
       const res = await fetch(url, {
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (compatible; ParagonImportBot/1.0; +https://lovable.dev)",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
           Accept: "text/html,application/xhtml+xml",
         },
         redirect: "follow",
       });
-      if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
-      html = await res.text();
+      diagnostics.plain_fetch_status = res.status;
+      diagnostics.fetch_success = res.ok;
+      if (res.ok) {
+        plainHtml = await res.text();
+        diagnostics.html_returned = plainHtml.length > 0;
+        diagnostics.html_length = plainHtml.length;
+      }
+      if (res.status === 401 || res.status === 403 || res.status === 429) {
+        diagnostics.page_blocked = true;
+      }
     } catch (e: any) {
-      throw new Error(`Could not fetch the Paragon page: ${e?.message ?? String(e)}`);
+      diagnostics.firecrawl_error = `plain fetch: ${e?.message ?? String(e)}`;
     }
-    return parseHtml(html, url);
+
+    // Paragon SPAs ship a small shell that shows "View Listings"
+    const hasListingSignals =
+      /MLS|bed|bath|sq\.?\s*ft|\$[\d,]{4,}/i.test(plainHtml) &&
+      !/<title>\s*View Listings?\s*<\/title>/i.test(plainHtml);
+    const needsRender = !hasListingSignals;
+    diagnostics.rendering_type = hasListingSignals ? "server-side" : "client-side";
+
+    let html = plainHtml;
+    let markdown: string | null = null;
+
+    if (needsRender) {
+      try {
+        const fc = await firecrawlScrape(url);
+        diagnostics.firecrawl_used = true;
+        if (fc.html && fc.html.length > html.length) html = fc.html;
+        markdown = fc.markdown;
+        diagnostics.html_returned = html.length > 0;
+        diagnostics.html_length = html.length;
+        diagnostics.screenshot_url = fc.screenshot;
+      } catch (e: any) {
+        diagnostics.firecrawl_error = e?.message ?? String(e);
+      }
+    }
+
+    if (!html) {
+      throw new Error(
+        `Could not retrieve page content. ${diagnostics.firecrawl_error ?? "Plain fetch failed."}`,
+      );
+    }
+
+    return parseFromContent(html, markdown, url, diagnostics);
   });
 
 type ImportPayload = {
