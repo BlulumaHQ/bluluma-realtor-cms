@@ -155,8 +155,10 @@ function Page() {
             disabled={parsing}
             className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em] disabled:opacity-50"
           >
-            {parsing ? "Importing…" : "Import Listing"}
+            {parsing ? "Extracting…" : "Test Extraction"}
           </button>
+          <p className="text-xs text-muted-foreground mt-1">
+            Fetches and renders the Paragon page (headless when needed). Shows parsed fields for review — nothing is saved until you click <strong>Save Listing</strong>.</p>
           <style>{`.input{width:100%;height:2.75rem;padding:0 .75rem;border:1px solid var(--border);background:var(--background)}`}</style>
         </div>
       ) : (
