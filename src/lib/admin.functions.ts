@@ -140,6 +140,8 @@ export const adminDashboardStats = createServerFn({ method: "POST" })
     }
     return { counts, realtors, recent, listingCountByRealtor: byRealtor };
   });
+
+export const adminUpsertRealtor = createServerFn({ method: "POST" })
   .inputValidator((d: { password?: string; realtor: Partial<Realtor> }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
