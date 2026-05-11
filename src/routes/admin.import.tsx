@@ -62,9 +62,9 @@ function Page() {
   const onGenerate = async () => {
     setError(null);
     if (!realtorId) return setError("Select a realtor first.");
-    const urls = links.split("\n").map((s) => s.trim()).filter(Boolean);
+    const urls = links.split("\n").map((s: string) => s.trim()).filter(Boolean);
     if (urls.length === 0) return setError("Paste at least one Paragon link.");
-    const initial: Card[] = urls.map((u, i) => ({
+    const initial: Card[] = urls.map((u: string, i: number) => ({
       id: `${Date.now()}-${i}`,
       url: u,
       status: "parsing",
