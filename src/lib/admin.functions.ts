@@ -56,7 +56,7 @@ async function readRealtorsWithDebug() {
     const { data: rows, error } = await sb
       .from("realtors")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("name", { ascending: true });
 
     if (error) {
       debug.error = formatSupabaseError(error);
@@ -72,7 +72,7 @@ async function readRealtorsWithDebug() {
   const { data: publicRows, error: publicError } = await publicClient
     .from("realtors")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("name", { ascending: true });
 
   if (publicError) {
     debug.error = [debug.error, `Publishable key fallback: ${formatSupabaseError(publicError)}`]
