@@ -549,7 +549,12 @@ function parseFromContent(
   const province = findFact(facts, [/province/i, /address region/i, /^state$/i]) ?? structuredString(firecrawlJson, ["province", "state", "region"]) ?? addressObj?.addressRegion ?? searchable.match(/\b(BC|British Columbia|AB|Alberta|ON|Ontario)\b/i)?.[1] ?? null;
   const postal_code = findFact(facts, [/postal/i, /zip/i]) ?? structuredString(firecrawlJson, ["postal_code", "postalCode", "zip"]) ?? addressObj?.postalCode ?? searchable.match(/\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b/i)?.[0] ?? null;
 
-  const price = parseMoney(findFact(facts, [/list price/i, /^price$/i, /asking/i, /sale price/i]) ?? structuredString(firecrawlJson, ["price", "list_price", "asking_price"]) ?? String(ld?.offers?.price ?? "") || searchable.match(/\$\s?[\d,]{4,}/)?.[0]);
+  const priceSource =
+    findFact(facts, [/list price/i, /^price$/i, /asking/i, /sale price/i]) ??
+    structuredString(firecrawlJson, ["price", "list_price", "asking_price"]) ??
+    (ld?.offers?.price != null ? String(ld.offers.price) : null) ??
+    searchable.match(/\$\s?[\d,]{4,}/)?.[0];
+  const price = parseMoney(priceSource);
   const beds = parseNumber(findFact(facts, [/bed(room)?s?/i, /beds total/i]) ?? structuredString(firecrawlJson, ["bedrooms", "beds"] ) ?? searchable.match(/(\d+(?:\.\d+)?)\s*(?:bed|bd|bedroom)/i)?.[0]);
   const baths = parseNumber(findFact(facts, [/bath(room)?s?/i, /baths total/i]) ?? structuredString(firecrawlJson, ["bathrooms", "baths"] ) ?? searchable.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[0]);
   const sqft = parseInteger(findFact(facts, [/floor area/i, /square feet/i, /sq\.?\s*ft/i, /^sqft$/i, /living area/i]) ?? structuredString(firecrawlJson, ["sqft", "square_feet", "floor_area"] ) ?? searchable.match(/[\d,]{3,}\s*(?:sq\.?\s*ft|sqft|square feet)/i)?.[0]);
