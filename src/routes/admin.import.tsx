@@ -1,16 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { AdminShell } from "@/components/admin-shell";
 import { adminListRealtorsDebug } from "@/lib/admin.functions";
-import { paragonParseUrl, paragonImportListing } from "@/lib/paragon-import.functions";
-import type { Listing } from "@/lib/types";
+import { paragonAnalyzeLinks, paragonImportItem } from "@/lib/paragon-import.functions";
 
 const searchSchema = z.object({
   realtor: z.string().optional(),
-  destination: z.enum(["active", "sold", "commercial"]).optional(),
   links: z.string().optional(),
 });
 
@@ -23,96 +21,149 @@ export const Route = createFileRoute("/admin/import")({
   ),
 });
 
-type Destination = "active" | "sold" | "commercial";
-type Parsed = Awaited<ReturnType<ReturnType<typeof useServerFn<typeof paragonParseUrl>>>>;
-type ImportForm = Partial<Omit<Listing, "features">> & { features?: any };
+type Classification = "active" | "sold" | "commercial_sale" | "commercial_lease" | "needs_review";
+type DupStatus = "already_posted" | "new" | "needs_review";
 
-type Card = {
-  id: string;
-  url: string;
-  status: "pending" | "parsing" | "ready" | "saving" | "saved" | "error";
-  error?: string;
-  parsed?: Parsed;
-  form: ImportForm;
-  images: string[];
-  result?: { slug: string; images_stored: number; images_failed: number; warning?: string | null };
+type Item = {
+  rowId: string;
+  mls_number: string | null;
+  address: string | null;
+  price: number | null;
+  status_label: string | null;
+  detail_url: string | null;
+  image_url: string | null;
+  classification: Classification;
+  duplicate_status: DupStatus;
+  duplicate_listing_id: string | null;
+  source_url: string;
+  source_kind: "group" | "single";
+  source_window: string;
+  selected: boolean;
+  destination: "active" | "sold" | "commercial";
+  updateExisting: boolean;
+  importStatus: "idle" | "importing" | "imported" | "skipped" | "error";
+  importError?: string;
+  importResult?: { slug: string; images_stored: number; images_failed: number; warning?: string | null; parsed_individual?: boolean; parse_error?: string | null };
 };
+
+type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null };
+
+function destFromClassification(c: Classification): "active" | "sold" | "commercial" {
+  if (c === "sold") return "sold";
+  if (c === "commercial_sale" || c === "commercial_lease") return "commercial";
+  return "active";
+}
 
 function Page() {
   const search = Route.useSearch();
   const lr = useServerFn(adminListRealtorsDebug);
-  const parseFn = useServerFn(paragonParseUrl);
-  const importFn = useServerFn(paragonImportListing);
+  const analyzeFn = useServerFn(paragonAnalyzeLinks);
+  const importItemFn = useServerFn(paragonImportItem);
   const realtorsQ = useQuery({ queryKey: ["a-realtors"], queryFn: () => lr({ data: {} }) });
   const realtors = realtorsQ.data?.rows ?? [];
   const debug = realtorsQ.data?.debug;
 
   const [realtorId, setRealtorId] = useState(search.realtor ?? "");
-  const [destination, setDestination] = useState<Destination>(search.destination ?? "active");
   const [links, setLinks] = useState(search.links ?? "");
-  const [cards, setCards] = useState<Card[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
 
   useEffect(() => {
-    if (!realtorId && realtors.length > 0 && !search.realtor && realtors.length === 1) setRealtorId(realtors[0].id);
+    if (!realtorId && realtors.length === 1 && !search.realtor) setRealtorId(realtors[0].id);
   }, [realtors, realtorId, search.realtor]);
 
-  const onGenerate = async () => {
+  const onAnalyze = async () => {
     setError(null);
     if (!realtorId) return setError("Select a realtor first.");
     const urls = links.split("\n").map((s: string) => s.trim()).filter(Boolean);
     if (urls.length === 0) return setError("Paste at least one Paragon link.");
-    const initial: Card[] = urls.map((u: string, i: number) => ({ id: `${Date.now()}-${i}`, url: u, status: "parsing", form: {}, images: [] }));
-    setCards(initial);
-
-    for (const card of initial) {
-      try {
-        const p = await parseFn({ data: { url: card.url } });
-        setCards((prev) => prev.map((c) => c.id === card.id ? {
-          ...c,
-          status: "ready",
-          parsed: p,
-          images: p.image_urls,
-          form: {
-            title: p.title,
-            address: p.address,
-            city: p.city,
-            price: p.price,
-            status: destination === "sold" ? "sold" : "active",
-            category: destination === "commercial" ? "commercial" : p.category,
-            transaction_type: p.transaction_type,
-            property_type: p.property_type,
-            beds: p.beds,
-            baths: p.baths,
-            sqft: p.sqft,
-            lot_size: p.lot_size,
-            mls_number: p.mls_number,
-            description: p.description,
-            features: p.features,
-            pdf_url: p.pdf_url,
-          },
-        } : c));
-      } catch (e: any) {
-        setCards((prev) => prev.map((c) => c.id === card.id ? { ...c, status: "error", error: e?.message ?? String(e) } : c));
-      }
-    }
-  };
-
-  const updateCard = (id: string, patch: Partial<Card>) => setCards((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
-
-  const saveCard = async (card: Card) => {
-    updateCard(card.id, { status: "saving", error: undefined });
+    setAnalyzing(true);
+    setEntries([]);
+    setItems([]);
     try {
-      const r = await importFn({ data: { realtorId, destination, paragonUrl: card.url, listing: card.form as Partial<Listing>, imageUrls: card.images } });
-      updateCard(card.id, { status: "saved", result: r });
+      const res = await analyzeFn({ data: { realtorId, urls } });
+      const newEntries: Entry[] = res.entries.map((e: any) => ({ url: e.url, kind: e.kind, itemCount: e.itemCount, firecrawlUsed: e.firecrawlUsed, finalUrl: e.finalUrl, error: e.error }));
+      const newItems: Item[] = res.entries.flatMap((e: any) => e.items.map((it: any, idx: number) => ({
+        rowId: `${e.url}-${it.mls_number ?? idx}-${idx}`,
+        mls_number: it.mls_number,
+        address: it.address,
+        price: it.price,
+        status_label: it.status_label,
+        detail_url: it.detail_url,
+        image_url: it.image_url,
+        classification: it.classification,
+        duplicate_status: it.duplicate_status,
+        duplicate_listing_id: it.duplicate_listing_id,
+        source_url: it.source_url,
+        source_kind: it.source_kind,
+        source_window: it.source_window,
+        selected: it.duplicate_status !== "already_posted",
+        destination: destFromClassification(it.classification),
+        updateExisting: false,
+        importStatus: "idle",
+      })));
+      setEntries(newEntries);
+      setItems(newItems);
     } catch (e: any) {
-      updateCard(card.id, { status: "error", error: e?.message ?? String(e) });
+      setError(e?.message ?? String(e));
+    } finally {
+      setAnalyzing(false);
     }
   };
 
-  const saveAll = async () => {
-    for (const c of cards) if (c.status === "ready") await saveCard(c);
+  const updateItem = (rowId: string, patch: Partial<Item>) => setItems((prev) => prev.map((i) => i.rowId === rowId ? { ...i, ...patch } : i));
+
+  const importOne = async (item: Item) => {
+    if (item.duplicate_status === "already_posted" && !item.updateExisting) {
+      updateItem(item.rowId, { importStatus: "skipped", importError: "Already posted — enable Update Existing to overwrite." });
+      return;
+    }
+    updateItem(item.rowId, { importStatus: "importing", importError: undefined });
+    try {
+      const r: any = await importItemFn({
+        data: {
+          realtorId,
+          item: {
+            mls_number: item.mls_number,
+            address: item.address,
+            price: item.price,
+            status_label: item.status_label,
+            detail_url: item.detail_url,
+            image_url: item.image_url,
+            classification: item.classification,
+            duplicate_status: item.duplicate_status,
+            duplicate_listing_id: item.duplicate_listing_id,
+            source_url: item.source_url,
+            source_kind: item.source_kind,
+            source_window: item.source_window,
+          },
+          updateExisting: item.updateExisting,
+        },
+      });
+      updateItem(item.rowId, { importStatus: "imported", importResult: r });
+    } catch (e: any) {
+      updateItem(item.rowId, { importStatus: "error", importError: e?.message ?? String(e) });
+    }
   };
+
+  const importSelected = async () => {
+    for (const it of items) {
+      if (!it.selected) continue;
+      if (it.importStatus === "imported") continue;
+      // refetch latest with current edits
+      const latest = items.find((x) => x.rowId === it.rowId)!;
+      await importOne(latest);
+    }
+  };
+
+  const totals = useMemo(() => {
+    const sel = items.filter((i) => i.selected).length;
+    const dup = items.filter((i) => i.duplicate_status === "already_posted").length;
+    const newCount = items.filter((i) => i.duplicate_status === "new").length;
+    return { sel, dup, newCount, total: items.length };
+  }, [items]);
 
   const showDropdownDebug = !realtorsQ.isLoading && realtors.length === 0;
 
@@ -121,8 +172,9 @@ function Page() {
       <div className="flex items-end justify-between gap-6">
         <div>
           <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Bluluma</div>
-          <h1 className="mt-2 font-display text-4xl">Import from Paragon</h1>
+          <h1 className="mt-2 font-display text-4xl">Group Import from Paragon</h1>
           <div className="gold-rule mt-4 max-w-xs" />
+          <p className="mt-3 text-sm text-muted-foreground max-w-2xl">Paste one or more Paragon public listing links — individual or group/report. The importer auto-detects which is which, splits group reports into individual listings, dedupes against existing listings, and lets you choose what to import.</p>
         </div>
         <Link to="/admin/dashboard" className="text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground">← Back to dashboard</Link>
       </div>
@@ -131,7 +183,9 @@ function Page() {
         <strong>Legal:</strong> Only import listings and photos that the Realtor has permission to use. MLS and Paragon content may be subject to brokerage, board, and MLS usage rules.
       </div>
 
+      {/* Stage 1 — paste */}
       <section className="bg-card shadow-card p-6 space-y-4">
+        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Stage 1 — Paste links</div>
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="block">
             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Realtor</div>
@@ -140,26 +194,16 @@ function Page() {
               {realtors.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </label>
-          <label className="block">
-            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Destination</div>
-            <select className="w-full h-11 px-3 border border-border bg-background" value={destination} onChange={(e) => setDestination(e.target.value as Destination)}>
-              <option value="active">Active Featured Listing</option>
-              <option value="sold">Sold Listing</option>
-              <option value="commercial">Commercial Listing</option>
-            </select>
-          </label>
         </div>
-
         <label className="block">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Paragon public listing links</div>
-          <textarea className="w-full min-h-32 p-3 border border-border bg-background font-mono text-sm" placeholder="One link per line" value={links} onChange={(e) => setLinks(e.target.value)} />
-          <div className="text-xs text-muted-foreground mt-1">One link per line. Each link becomes a review card.</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Paragon public links (group/report or individual)</div>
+          <textarea className="w-full min-h-32 p-3 border border-border bg-background font-mono text-sm" placeholder="One link per line. Group reports will be split into individual listings." value={links} onChange={(e) => setLinks(e.target.value)} />
         </label>
-
         {error && <div className="text-destructive text-sm">{error}</div>}
-
         <div className="flex justify-end">
-          <button onClick={onGenerate} className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em]">Generate Imports</button>
+          <button onClick={onAnalyze} disabled={analyzing} className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em] disabled:opacity-50">
+            {analyzing ? "Analyzing…" : "Analyze Links"}
+          </button>
         </div>
       </section>
 
@@ -167,20 +211,132 @@ function Page() {
         <section className="border border-destructive/40 bg-card text-destructive p-4 text-sm space-y-1">
           <div className="font-medium">Realtor dropdown is empty — Supabase debug</div>
           <div className="font-mono text-xs">Host: {hostnameOf(debug?.supabaseUrl ?? "")}</div>
-          <div className="font-mono text-xs">Query: select * from realtors order by name asc</div>
           <div className="font-mono text-xs">Rows returned: {debug?.rowsReturned ?? 0}</div>
           <div className="font-mono text-xs whitespace-pre-wrap">Error: {debug?.error ?? "None"}</div>
         </section>
       )}
 
-      {cards.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-2xl">Review ({cards.length})</h2>
-            <button onClick={saveAll} className="px-4 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Save all ready</button>
+      {/* Entries summary */}
+      {entries.length > 0 && (
+        <section className="bg-card shadow-card p-4 text-sm space-y-2">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Detected Sources</div>
+          <div className="overflow-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-muted-foreground"><tr>
+                <th className="py-1 pr-4">URL</th><th className="py-1 pr-4">Kind</th><th className="py-1 pr-4">Items</th><th className="py-1 pr-4">Final URL</th><th className="py-1">Error</th>
+              </tr></thead>
+              <tbody>
+                {entries.map((e) => (
+                  <tr key={e.url} className="border-t border-border">
+                    <td className="py-2 pr-4 font-mono break-all">{e.url}</td>
+                    <td className="py-2 pr-4">{e.kind}</td>
+                    <td className="py-2 pr-4">{e.itemCount}</td>
+                    <td className="py-2 pr-4 font-mono break-all">{e.finalUrl ?? "—"}</td>
+                    <td className="py-2 text-destructive">{e.error ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          {cards.map((c) => <ReviewCard key={c.id} card={c} onChange={(patch) => updateCard(c.id, patch)} onSave={() => saveCard(c)} />)}
-        </div>
+        </section>
+      )}
+
+      {/* Stage 2 — review table */}
+      {items.length > 0 && (
+        <section className="bg-card shadow-card p-6 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Stage 2 — Review detected listings</div>
+              <h2 className="font-display text-2xl mt-1">{totals.total} listings detected</h2>
+              <div className="text-xs text-muted-foreground mt-1">{totals.newCount} new · {totals.dup} already posted · {totals.sel} selected</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: true })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: false })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Clear</button>
+              <button onClick={importSelected} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em]">Import selected</button>
+            </div>
+          </div>
+
+          <div className="overflow-auto border border-border">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50 text-left text-muted-foreground">
+                <tr>
+                  <th className="p-2 w-8"></th>
+                  <th className="p-2 w-16">Photo</th>
+                  <th className="p-2">Address / MLS</th>
+                  <th className="p-2 w-24">Price</th>
+                  <th className="p-2 w-32">Status</th>
+                  <th className="p-2 w-36">Classification</th>
+                  <th className="p-2 w-32">Destination</th>
+                  <th className="p-2 w-32">Dup status</th>
+                  <th className="p-2 w-28">Source</th>
+                  <th className="p-2 w-40">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.rowId} className="border-t border-border align-top">
+                    <td className="p-2"><input type="checkbox" checked={it.selected} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
+                    <td className="p-2">
+                      {it.image_url ? (
+                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_url)}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }} />
+                      ) : <div className="h-12 w-16 bg-muted border border-border" />}
+                    </td>
+                    <td className="p-2">
+                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">No address detected</span>}</div>
+                      <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
+                      {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
+                    </td>
+                    <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
+                    <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
+                    <td className="p-2">
+                      <select className="w-full h-8 px-1 border border-border bg-background text-xs" value={it.classification} onChange={(e) => {
+                        const c = e.target.value as Classification;
+                        updateItem(it.rowId, { classification: c, destination: destFromClassification(c) });
+                      }}>
+                        <option value="active">Active</option>
+                        <option value="sold">Sold / Closed</option>
+                        <option value="commercial_sale">Commercial Sale</option>
+                        <option value="commercial_lease">Commercial Lease</option>
+                        <option value="needs_review">Needs Review</option>
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <select className="w-full h-8 px-1 border border-border bg-background text-xs" value={it.destination} onChange={(e) => updateItem(it.rowId, { destination: e.target.value as Item["destination"] })}>
+                        <option value="active">Active Featured</option>
+                        <option value="sold">Sold</option>
+                        <option value="commercial">Commercial</option>
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <DupBadge status={it.duplicate_status} />
+                      {it.duplicate_status === "already_posted" && (
+                        <label className="flex items-center gap-1 mt-1 text-[10px]">
+                          <input type="checkbox" checked={it.updateExisting} onChange={(e) => updateItem(it.rowId, { updateExisting: e.target.checked })} /> Update existing
+                        </label>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      <span className={`inline-block px-1.5 py-0.5 border text-[10px] uppercase ${it.source_kind === "group" ? "border-accent text-accent" : "border-border"}`}>{it.source_kind}</span>
+                      {it.source_kind === "group" && !it.detail_url && <div className="text-[10px] text-muted-foreground mt-1">Needs manual photos</div>}
+                    </td>
+                    <td className="p-2">
+                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing"} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
+                        {it.importStatus === "importing" ? "Importing…" : it.importStatus === "imported" ? "Re-import" : "Import"}
+                      </button>
+                      {it.importStatus === "imported" && it.importResult && (
+                        <div className="text-[10px] text-accent mt-1">Saved · {it.importResult.images_stored} photos{it.importResult.warning ? " · needs photos" : ""}</div>
+                      )}
+                      {it.importStatus === "skipped" && <div className="text-[10px] text-muted-foreground mt-1">{it.importError}</div>}
+                      {it.importStatus === "error" && <div className="text-[10px] text-destructive mt-1 break-words">{it.importError}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
@@ -190,217 +346,8 @@ function hostnameOf(url: string) {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-function ReviewCard({ card, onChange, onSave }: { card: Card; onChange: (patch: Partial<Card>) => void; onSave: () => void }) {
-  const { form, images, parsed, status, error, result, url } = card;
-  const set = (patch: ImportForm) => onChange({ form: { ...form, ...patch } });
-  const featureData = form.features ?? {};
-  const updateFeature = (key: string, value: any) => set({ features: { ...featureData, [key]: value } });
-  const clientSideOnly = parsed?.diagnostics.rendering_type === "client-side" && !parsed.title && !parsed.address && !parsed.price;
-
-  const makePrimary = (index: number) => {
-    if (index === 0) return;
-    const copy = [...images];
-    const [selected] = copy.splice(index, 1);
-    onChange({ images: [selected, ...copy] });
-  };
-
-  return (
-    <div className="bg-card shadow-card p-6 space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground truncate font-mono">{url}</div>
-          <div className="text-xs uppercase tracking-[0.18em] mt-1"><StatusPill status={status} /></div>
-        </div>
-        {status === "ready" && <button onClick={onSave} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em]">Save</button>}
-        {status === "saved" && result && <span className="text-xs text-accent">Saved · {result.images_stored} images{result.warning ? " · needs photos" : ""}</span>}
-      </div>
-
-      {status === "parsing" && <p className="text-sm text-muted-foreground">Extracting listing facts and gallery photos…</p>}
-      {status === "error" && <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>}
-
-      {parsed && status !== "parsing" && (
-        <>
-          {clientSideOnly && <div className="bg-secondary border border-accent text-secondary-foreground p-3 text-xs">Paragon content appears to require rendered extraction. Review all fields before saving.</div>}
-          {images.length === 0 && <div className="bg-secondary border border-accent text-secondary-foreground p-3 text-xs">No property gallery images were detected. Please upload photos manually.</div>}
-
-          <Section title="1. Basic Details" defaultOpen>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Field label="Title"><input className="input" value={form.title ?? ""} onChange={(e) => set({ title: e.target.value })} /></Field>
-              <Field label="Address"><input className="input" value={form.address ?? ""} onChange={(e) => set({ address: e.target.value })} /></Field>
-              <Field label="City"><input className="input" value={form.city ?? ""} onChange={(e) => set({ city: e.target.value })} /></Field>
-              <Field label="Province"><input className="input" value={featureData.province ?? parsed.province ?? ""} onChange={(e) => updateFeature("province", e.target.value)} /></Field>
-              <Field label="Postal code"><input className="input" value={featureData.postal_code ?? parsed.postal_code ?? ""} onChange={(e) => updateFeature("postal_code", e.target.value)} /></Field>
-              <Field label="Price"><input type="number" className="input" value={form.price ?? ""} onChange={(e) => set({ price: e.target.value ? Number(e.target.value) : null })} /></Field>
-              <Field label="MLS #"><input className="input" value={form.mls_number ?? ""} onChange={(e) => set({ mls_number: e.target.value })} /></Field>
-              <Field label="Status"><input className="input" value={form.status ?? ""} onChange={(e) => set({ status: e.target.value })} /></Field>
-              <Field label="Category"><input className="input" value={form.category ?? ""} onChange={(e) => set({ category: e.target.value })} /></Field>
-              <Field label="Transaction"><input className="input" value={form.transaction_type ?? ""} onChange={(e) => set({ transaction_type: e.target.value })} /></Field>
-              <Field label="Property type"><input className="input" value={form.property_type ?? ""} onChange={(e) => set({ property_type: e.target.value })} /></Field>
-              <Field label="PDF/report URL"><input className="input" value={form.pdf_url ?? ""} onChange={(e) => set({ pdf_url: e.target.value })} /></Field>
-            </div>
-          </Section>
-
-          <Section title="2. Property Specs">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Field label="Beds"><input type="number" className="input" value={form.beds ?? ""} onChange={(e) => set({ beds: e.target.value ? Number(e.target.value) : null })} /></Field>
-              <Field label="Baths"><input type="number" step="0.5" className="input" value={form.baths ?? ""} onChange={(e) => set({ baths: e.target.value ? Number(e.target.value) : null })} /></Field>
-              <Field label="Sqft"><input type="number" className="input" value={form.sqft ?? ""} onChange={(e) => set({ sqft: e.target.value ? Number(e.target.value) : null })} /></Field>
-              <Field label="Lot size"><input className="input" value={form.lot_size ?? ""} onChange={(e) => set({ lot_size: e.target.value })} /></Field>
-              {[
-                ["year_built", "Year built"], ["strata_fee", "Strata fee"], ["taxes", "Taxes"], ["zoning", "Zoning"],
-                ["parking", "Parking"], ["garage", "Garage / carport"], ["property_style", "Property style"], ["building_type", "Building type"],
-                ["land_size", "Land size"], ["floor_area", "Floor area"], ["units", "Units"], ["lease_sale_information", "Lease / sale info"],
-              ].map(([key, label]) => <Field key={key} label={label}><input className="input" value={featureData[key] ?? ""} onChange={(e) => updateFeature(key, e.target.value)} /></Field>)}
-            </div>
-          </Section>
-
-          <Section title="3. Description">
-            <Field label="Public remarks / marketing description"><textarea className="input min-h-32" value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} /></Field>
-          </Section>
-
-          <Section title="4. Brokerage / Company Info">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[["brokerage", "Brokerage"], ["listing_agent", "Listing agent"], ["co_listing_agent", "Co-listing agent"], ["office_name", "Office name"]].map(([key, label]) => (
-                <Field key={key} label={label}><input className="input" value={featureData[key] ?? ""} onChange={(e) => updateFeature(key, e.target.value)} /></Field>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="5. Features / Amenities">
-            <div className="grid md:grid-cols-2 gap-3">
-              {[
-                ["feature_list", "General features"], ["interior_features", "Interior features"], ["exterior_features", "Exterior features"], ["amenities", "Amenities"],
-                ["appliances", "Appliances"], ["utilities", "Utilities"], ["heating", "Heating"], ["cooling", "Cooling"],
-                ["fireplace", "Fireplace"], ["basement", "Basement"], ["view", "View"], ["site_influences", "Site influences"],
-                ["nearby_amenities", "Nearby amenities"], ["public_transportation", "Public transportation"],
-              ].map(([key, label]) => (
-                <Field key={key} label={label}>
-                  <textarea
-                    className="input min-h-20"
-                    value={Array.isArray(featureData[key]) ? featureData[key].join("\n") : featureData[key] ?? ""}
-                    onChange={(e) => updateFeature(key, ["feature_list", "interior_features", "exterior_features", "amenities", "appliances", "utilities", "site_influences", "nearby_amenities"].includes(key) ? e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) : e.target.value)}
-                  />
-                </Field>
-              ))}
-            </div>
-          </Section>
-
-          <Section title={`6. Raw Facts Extracted (${parsed.raw_facts.length})`}>
-            <div className="max-h-80 overflow-auto border border-border divide-y divide-border">
-              {parsed.raw_facts.map((fact, i) => (
-                <div key={`${fact.label}-${i}`} className="grid md:grid-cols-[220px_1fr_120px] gap-3 p-3 text-xs">
-                  <div className="font-medium">{fact.label}</div>
-                  <div className="text-muted-foreground break-words">{fact.value}</div>
-                  <div className="font-mono text-muted-foreground">{fact.source}</div>
-                </div>
-              ))}
-              {parsed.raw_facts.length === 0 && <div className="p-4 text-sm text-muted-foreground">No key/value facts detected.</div>}
-            </div>
-          </Section>
-
-          <Section title={`7. Gallery Images (${images.length})`} defaultOpen>
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {images.map((u, i) => (
-                <div key={u + i} className="relative aspect-[4/3] bg-muted border border-border overflow-hidden">
-                  <img
-                    src={`/api/image-proxy?url=${encodeURIComponent(u)}`}
-                    className="h-full w-full object-cover"
-                    alt="Imported property gallery candidate"
-                    loading="lazy"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }}
-                  />
-                  <div className="absolute left-1 top-1 flex gap-1">
-                    <button onClick={() => makePrimary(i)} className="bg-background/90 text-foreground text-[10px] px-1.5 py-0.5 border border-border">{i === 0 ? "Primary" : "Set primary"}</button>
-                  </div>
-                  <button onClick={() => onChange({ images: images.filter((_, idx) => idx !== i) })} className="absolute top-1 right-1 bg-foreground text-background text-[10px] px-1.5 py-0.5">×</button>
-                </div>
-              ))}
-              {images.length === 0 && <div className="col-span-full p-4 border border-border text-sm text-muted-foreground">No kept property gallery images.</div>}
-            </div>
-          </Section>
-
-          <details className="text-xs border border-border p-3">
-            <summary className="cursor-pointer text-muted-foreground">Parser diagnostics</summary>
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 font-mono">
-              <Diag k="Fetch success" v={String(parsed.diagnostics.fetch_success)} />
-              <Diag k="Final URL" v={parsed.diagnostics.final_url ?? "—"} />
-              <Diag k="HTTP status" v={String(parsed.diagnostics.plain_fetch_status ?? "—")} />
-              <Diag k="HTML length" v={String(parsed.diagnostics.html_length)} />
-              <Diag k="Page title" v={parsed.diagnostics.page_title ?? "—"} />
-              <Diag k="Text blocks" v={String(parsed.diagnostics.text_blocks_found)} />
-              <Diag k="Key/value rows" v={String(parsed.diagnostics.key_value_rows_found)} />
-              <Diag k="Image URLs found" v={String(parsed.diagnostics.image_urls_found)} />
-              <Diag k="Images kept" v={String(parsed.diagnostics.gallery_images_kept)} />
-              <Diag k="Images rejected" v={String(parsed.diagnostics.images_rejected)} />
-              <Diag k="Rendering" v={parsed.diagnostics.rendering_type} />
-              <Diag k="Firecrawl used" v={String(parsed.diagnostics.firecrawl_used)} />
-              <Diag k="Blocked" v={String(parsed.diagnostics.page_blocked)} />
-              <Diag k="Client rendered" v={String(parsed.diagnostics.appears_client_side_rendered)} />
-            </div>
-            {parsed.parse_warnings.length > 0 && <div className="text-accent mt-2 text-xs">Warnings: {parsed.parse_warnings.join("; ")}</div>}
-            {parsed.diagnostics.firecrawl_error && <div className="text-destructive mt-2 text-xs">Rendered extraction: {parsed.diagnostics.firecrawl_error}</div>}
-            <div className="mt-3 grid md:grid-cols-2 gap-3">
-              <DiagnosticList title="Selectors used" items={parsed.diagnostics.selectors_used} />
-              <DiagnosticList title="Selectors failed" items={parsed.diagnostics.selectors_failed} />
-            </div>
-            <details className="mt-3">
-              <summary className="cursor-pointer text-muted-foreground">Image preflight checks ({parsed.diagnostics.image_checks.length})</summary>
-              <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">
-                {parsed.diagnostics.image_checks.map((c, i) => (
-                  <div key={`${c.url}-${i}`} className="p-2 grid md:grid-cols-[1fr_120px_160px_160px] gap-2">
-                    <div className="break-all font-mono">{c.url}</div>
-                    <div className={c.ok ? "text-accent" : "text-destructive"}>{c.ok ? "ok" : "rejected"}</div>
-                    <div className="font-mono text-muted-foreground">HTTP {c.status ?? "—"} · {c.content_type ?? "?"}</div>
-                    <div className="font-mono text-muted-foreground">{c.content_length ?? "?"}B · {c.reason ?? ""}</div>
-                  </div>
-                ))}
-                {parsed.diagnostics.image_checks.length === 0 && <div className="p-3 text-sm text-muted-foreground">No images to preflight.</div>}
-              </div>
-            </details>
-            <details className="mt-3">
-              <summary className="cursor-pointer text-muted-foreground">Rejected images ({parsed.rejected_images.length})</summary>
-              <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">
-                {parsed.rejected_images.map((img, i) => (
-                  <div key={`${img.url}-${i}`} className="p-2 grid md:grid-cols-[1fr_220px_120px] gap-2">
-                    <div className="break-all font-mono">{img.url}</div>
-                    <div>{img.reason}</div>
-                    <div className="font-mono text-muted-foreground">{img.source}</div>
-                  </div>
-                ))}
-              </div>
-            </details>
-            <details className="mt-3"><summary className="cursor-pointer text-muted-foreground">Detected text blocks</summary><pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap bg-muted p-3">{parsed.detected_text_blocks.join("\n")}</pre></details>
-            <details className="mt-3"><summary className="cursor-pointer text-muted-foreground">Raw HTML preview</summary><pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap bg-muted p-3">{parsed.html_preview}</pre></details>
-          </details>
-        </>
-      )}
-      <style>{`.input{width:100%;height:2.5rem;padding:0 .65rem;border:1px solid var(--border);background:var(--background);font-size:.875rem}textarea.input{height:auto;padding:.5rem .65rem}`}</style>
-    </div>
-  );
-}
-
-function Section({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
-  return (
-    <details className="border border-border p-4" open={defaultOpen}>
-      <summary className="cursor-pointer font-display text-xl">{title}</summary>
-      <div className="mt-4">{children}</div>
-    </details>
-  );
-}
-
-function StatusPill({ status }: { status: Card["status"] }) {
-  const map: Record<Card["status"], string> = { pending: "text-muted-foreground", parsing: "text-accent", ready: "text-accent", saving: "text-accent", saved: "text-accent", error: "text-destructive" };
-  return <span className={map[status]}>{status}</span>;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-1">{label}</div>{children}</label>;
-}
-
-function Diag({ k, v }: { k: string; v: string }) {
-  return <div className="border border-border p-2"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k}</div><div className="truncate" title={v}>{v}</div></div>;
-}
-
-function DiagnosticList({ title, items }: { title: string; items: string[] }) {
-  return <div className="border border-border p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>{items.length ? <ul className="space-y-1">{items.map((item) => <li key={item}>{item}</li>)}</ul> : <div className="text-muted-foreground">None</div>}</div>;
+function DupBadge({ status }: { status: DupStatus }) {
+  const label = status === "already_posted" ? "Already Posted" : status === "needs_review" ? "Needs Review" : "New";
+  const cls = status === "already_posted" ? "border-destructive/50 text-destructive" : status === "needs_review" ? "border-accent text-accent" : "border-border text-foreground";
+  return <span className={`inline-block px-1.5 py-0.5 border text-[10px] uppercase ${cls}`}>{label}</span>;
 }

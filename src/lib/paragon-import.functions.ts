@@ -1016,6 +1016,7 @@ type ImportPayload = {
   paragonUrl: string;
   listing: Partial<Listing>;
   imageUrls: string[];
+  existingListingId?: string | null;
 };
 
 function slugify(s: string) {
@@ -1079,15 +1080,25 @@ export const paragonImportListing = createServerFn({ method: "POST" })
       baseListing.status = baseListing.status ?? "active";
     }
 
-    if (!baseListing.slug) {
+    if (!baseListing.slug && !data.existingListingId) {
       const seed = baseListing.address || baseListing.title || baseListing.mls_number || `listing-${Date.now()}`;
       baseListing.slug = `${slugify(seed)}-${Math.random().toString(36).slice(2, 6)}`;
     }
 
-    const { data: inserted, error: insertErr } = await sb.from("listings").insert({ ...baseListing, updated_at: new Date().toISOString() }).select("*").single();
-    if (insertErr) throw insertErr;
+    let listing: Listing;
+    if (data.existingListingId) {
+      const updatePayload: any = { ...baseListing, updated_at: new Date().toISOString() };
+      delete updatePayload.slug;
+      const { data: updated, error: updErr } = await sb.from("listings").update(updatePayload).eq("id", data.existingListingId).select("*").single();
+      if (updErr) throw updErr;
+      listing = updated as Listing;
+    } else {
+      const { data: inserted, error: insertErr } = await sb.from("listings").insert({ ...baseListing, updated_at: new Date().toISOString() }).select("*").single();
+      if (insertErr) throw insertErr;
+      listing = inserted as Listing;
+    }
 
-    const listing = inserted as Listing;
+    
     const basePath = `${data.realtorId}/${listing.id}`;
     const storedUrls: string[] = [];
     const failedUrls: string[] = [];
@@ -1114,5 +1125,294 @@ export const paragonImportListing = createServerFn({ method: "POST" })
       failed_urls: failedUrls,
       primary_image_url: primary,
       warning: storedUrls.length === 0 ? "No property gallery images were detected. Please upload photos manually." : null,
+    };
+  });
+
+// =====================================================================
+// Group / Report link analysis (multi-listing detection)
+// =====================================================================
+
+export type AnalyzedItem = {
+  mls_number: string | null;
+  address: string | null;
+  price: number | null;
+  status_label: string | null;
+  detail_url: string | null;
+  image_url: string | null;
+  classification: "active" | "sold" | "commercial_sale" | "commercial_lease" | "needs_review";
+  duplicate_status: "already_posted" | "new" | "needs_review";
+  duplicate_listing_id: string | null;
+  source_url: string;
+  source_kind: "group" | "single";
+  source_window: string;
+};
+
+export type AnalyzedEntry = {
+  url: string;
+  kind: "group" | "single" | "unknown";
+  items: AnalyzedItem[];
+  itemCount: number;
+  firecrawlUsed: boolean;
+  finalUrl: string | null;
+  error: string | null;
+};
+
+function isLikelyGroupUrl(url: string) {
+  return /(report|collab|multi|listingsbysearch|saved\s*search|searchresult|gallery|cma)/i.test(url);
+}
+
+function classifyItem(item: { price: number | null; status_label: string | null; source_window: string; address: string | null }, markdown: string, html: string): AnalyzedItem["classification"] {
+  const text = `${item.source_window} ${markdown} ${stripTags(html).slice(0, 4000)}`.toLowerCase();
+  const status = (item.status_label ?? "").toLowerCase();
+  const isSold = /\b(sold|closed|leased)\b/.test(status);
+  const isLeaseFlag = /\b(for\s*lease|lease\s*rate|monthly\s*rent|net\s*lease|per\s*sq\.?\s*ft\b|\$\s*\d+\s*\/\s*(?:sf|sq\s*ft|month|mo)|annual\s*rent)\b/.test(text) || (item.price === 0);
+  const isCommercial = /\b(commercial|industrial|warehouse|office\s*space|retail\s*space|business\s*for\s*sale|land\s*for\s*sale|multi[-\s]*family)\b/.test(text);
+  if (isCommercial && isLeaseFlag) return "commercial_lease";
+  if (isCommercial) return "commercial_sale";
+  if (isLeaseFlag) return "commercial_lease";
+  if (isSold) return "sold";
+  if (!item.address && item.price == null) return "needs_review";
+  return "active";
+}
+
+function findNearbyImage(html: string, anchor: string, sourceUrl: string): string | null {
+  const idx = html.indexOf(anchor);
+  if (idx < 0) return null;
+  const win = html.slice(Math.max(0, idx - 2000), Math.min(html.length, idx + 600));
+  const matches = [...win.matchAll(/<img[^>]+(?:src|data-src|data-original)=["']([^"']+)["']/gi)];
+  for (const m of matches.reverse()) {
+    const abs = absoluteUrl(m[1], sourceUrl);
+    if (!abs) continue;
+    if (rejectReason({ url: abs, source: "group-near", context: "gallery property listing", score: 8 })) continue;
+    return abs;
+  }
+  return null;
+}
+
+function findNearbyDetailLink(html: string, anchor: string, sourceUrl: string, links: string[]): string | null {
+  // Look for hrefs in window around the anchor
+  const idx = html.indexOf(anchor);
+  if (idx >= 0) {
+    const win = html.slice(Math.max(0, idx - 1500), Math.min(html.length, idx + 1500));
+    const hrefs = [...win.matchAll(/href=["']([^"']+)["']/gi)].map((m) => m[1]);
+    for (const href of hrefs) {
+      const abs = absoluteUrl(href, sourceUrl);
+      if (!abs) continue;
+      if (/\.(pdf|jpg|jpeg|png|webp|gif|css|js)(?:[?#]|$)/i.test(abs)) continue;
+      if (/(LinkID|ListingID|MLS|Listing\.aspx|PropertyDetail|ListingDetail|Property\/|Listing\/)/i.test(abs)) return abs;
+    }
+  }
+  // Check structured links list for ones referencing this MLS code
+  const upper = anchor.toUpperCase();
+  for (const l of links) if (l.toUpperCase().includes(upper)) return l;
+  return null;
+}
+
+function extractListingItems(html: string, markdown: string | null, sourceUrl: string, links: string[]): AnalyzedItem[] {
+  const items: AnalyzedItem[] = [];
+  const seenMls = new Set<string>();
+  const md = markdown ?? stripTags(html);
+  const mlsRe = /MLS\s*(?:#|No\.?|Number|ID)?\s*[:\-]?\s*([A-Z]?\d{5,10}[A-Z0-9]?)/gi;
+  let m;
+  while ((m = mlsRe.exec(md))) {
+    const mls = m[1].toUpperCase();
+    if (seenMls.has(mls)) continue;
+    seenMls.add(mls);
+    const start = Math.max(0, m.index - 500);
+    const end = Math.min(md.length, m.index + 500);
+    const win = md.slice(start, end);
+    const priceMatch = win.match(/\$\s?([\d,]{3,})(?:\s*(?:\/\s*(?:mo|month|sf|sq\s*ft))?)?/i);
+    const price = priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : null;
+    const addressMatch = win.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'-]{4,90}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir)\b[^\n,|]*/i);
+    const address = addressMatch ? compact(addressMatch[0]) : null;
+    const statusMatch = win.match(/\b(Active|Sold|Closed|Pending|Expired|Withdrawn|For\s+Lease|For\s+Sale|Leased|New)\b/i);
+    const status_label = statusMatch ? compact(statusMatch[0]) : null;
+    const detail_url = findNearbyDetailLink(html, mls, sourceUrl, links);
+    const image_url = findNearbyImage(html, mls, sourceUrl);
+    items.push({
+      mls_number: mls,
+      address,
+      price: Number.isFinite(price) ? price : null,
+      status_label,
+      detail_url,
+      image_url,
+      classification: "active",
+      duplicate_status: "new",
+      duplicate_listing_id: null,
+      source_url: sourceUrl,
+      source_kind: "group",
+      source_window: compact(win).slice(0, 280),
+    });
+  }
+  return items;
+}
+
+export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
+  .inputValidator((d: { realtorId: string; urls: string[] }) => d)
+  .handler(async ({ data }) => {
+    const cleaned = Array.from(new Set(data.urls.map((u) => u.trim()).filter(Boolean)));
+    const entries: AnalyzedEntry[] = [];
+
+    for (const url of cleaned) {
+      const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null };
+      try {
+        const fc = await firecrawlScrape(url);
+        entry.firecrawlUsed = true;
+        entry.finalUrl = fc.finalUrl;
+        const html = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
+        let items = extractListingItems(html, fc.markdown, fc.finalUrl ?? url, fc.links);
+        if (items.length >= 2) entry.kind = "group";
+        else if (items.length === 1) entry.kind = "single";
+        else entry.kind = isLikelyGroupUrl(url) ? "group" : "single";
+
+        if (items.length === 0) {
+          // synthetic single item — let import call full parser
+          items = [{
+            mls_number: null, address: null, price: null, status_label: null,
+            detail_url: url, image_url: null, classification: "needs_review",
+            duplicate_status: "new", duplicate_listing_id: null,
+            source_url: url, source_kind: "single", source_window: "",
+          }];
+        }
+        for (const it of items) {
+          it.source_kind = entry.kind === "group" ? "group" : "single";
+          it.classification = classifyItem(it, fc.markdown ?? "", html);
+        }
+        entry.items = items;
+        entry.itemCount = items.length;
+      } catch (e: any) {
+        entry.error = e?.message ?? String(e);
+      }
+      entries.push(entry);
+    }
+
+    // Duplicate detection vs Supabase
+    const sb = getAdminClient();
+    const allItems = entries.flatMap((e) => e.items);
+    const mlsList = Array.from(new Set(allItems.map((i) => i.mls_number).filter((x): x is string => !!x)));
+    const urlList = Array.from(new Set(allItems.flatMap((i) => [i.source_url, i.detail_url]).filter((x): x is string => !!x)));
+
+    const [byMls, byUrl] = await Promise.all([
+      mlsList.length ? sb.from("listings").select("id,mls_number,paragon_url,address,price,realtor_id").in("mls_number", mlsList) : Promise.resolve({ data: [] as any[] }),
+      urlList.length ? sb.from("listings").select("id,mls_number,paragon_url,address,price,realtor_id").in("paragon_url", urlList) : Promise.resolve({ data: [] as any[] }),
+    ]);
+    const matches = [...((byMls as any).data ?? []), ...((byUrl as any).data ?? [])];
+
+    for (const item of allItems) {
+      let match: any = null;
+      if (item.mls_number) {
+        const upper = item.mls_number.toUpperCase();
+        match = matches.find((r) => r.mls_number && String(r.mls_number).toUpperCase() === upper) ?? null;
+      }
+      if (!match) {
+        match = matches.find((r) => r.paragon_url && (r.paragon_url === item.detail_url || r.paragon_url === item.source_url)) ?? null;
+      }
+      if (!match && item.address && item.price != null) {
+        const addrKey = item.address.toLowerCase().slice(0, 14);
+        match = matches.find((r) => r.realtor_id === data.realtorId && r.price === item.price && r.address && r.address.toLowerCase().includes(addrKey)) ?? null;
+      }
+      if (match) {
+        item.duplicate_status = "already_posted";
+        item.duplicate_listing_id = match.id;
+      } else if (!item.address && !item.mls_number && item.price == null) {
+        item.duplicate_status = "needs_review";
+      }
+    }
+    return { entries };
+  });
+
+// =====================================================================
+// One-call import for a single analyzed item.
+// Calls the full parser when a detail URL is present, otherwise saves
+// the partial group-only data and flags it for manual photo upload.
+// =====================================================================
+
+export const paragonImportItem = createServerFn({ method: "POST" })
+  .inputValidator((d: {
+    realtorId: string;
+    item: AnalyzedItem;
+    updateExisting: boolean;
+  }) => d)
+  .handler(async ({ data }) => {
+    const item = data.item;
+    const dest: "active" | "sold" | "commercial" =
+      item.classification === "sold" ? "sold" :
+      item.classification.startsWith("commercial") ? "commercial" : "active";
+
+    // Resolve target URL: prefer detail link; if only group page is available, the group URL will be used and photos are skipped.
+    const importUrl = item.detail_url || item.source_url;
+    const useFullParse = item.source_kind === "single" || (!!item.detail_url && item.detail_url !== item.source_url);
+
+    let parsed: Parsed | null = null;
+    let parseError: string | null = null;
+    if (useFullParse) {
+      try {
+        parsed = await (paragonParseUrl as any)({ data: { url: importUrl } });
+      } catch (e: any) {
+        parseError = e?.message ?? String(e);
+      }
+    }
+
+    const baseFeatures: any = parsed ? parsed.features : { needs_manual_photos: true, source_kind: item.source_kind, group_url: item.source_url };
+    if (item.source_kind === "group" && !item.detail_url) {
+      baseFeatures.needs_manual_photos = true;
+      baseFeatures.image_status = "Needs manual photo upload";
+    }
+
+    const transaction_type =
+      item.classification === "commercial_lease" ? "lease" :
+      parsed?.transaction_type ?? (dest === "active" ? "sale" : null);
+
+    const listing: Partial<Listing> = parsed
+      ? {
+          title: parsed.title ?? item.address ?? item.mls_number,
+          address: parsed.address ?? item.address,
+          city: parsed.city,
+          price: parsed.price ?? item.price,
+          status: dest === "sold" ? "sold" : "active",
+          category: dest === "commercial" ? "commercial" : (parsed.category ?? "residential"),
+          transaction_type,
+          property_type: parsed.property_type,
+          beds: parsed.beds,
+          baths: parsed.baths,
+          sqft: parsed.sqft,
+          lot_size: parsed.lot_size,
+          mls_number: parsed.mls_number ?? item.mls_number,
+          description: parsed.description,
+          features: baseFeatures,
+          pdf_url: parsed.pdf_url,
+        }
+      : {
+          title: item.address ?? item.mls_number ?? "Imported listing",
+          address: item.address,
+          price: item.price,
+          status: dest === "sold" ? "sold" : "active",
+          category: dest === "commercial" ? "commercial" : "residential",
+          transaction_type,
+          mls_number: item.mls_number,
+          features: baseFeatures,
+        };
+
+    const imageUrls = parsed?.image_urls ?? [];
+
+    const result = await (paragonImportListing as any)({
+      data: {
+        realtorId: data.realtorId,
+        destination: dest,
+        paragonUrl: importUrl,
+        listing,
+        imageUrls,
+        existingListingId: data.updateExisting && item.duplicate_listing_id ? item.duplicate_listing_id : null,
+      },
+    });
+
+    return {
+      ...result,
+      parsed_individual: !!parsed,
+      parse_error: parseError,
+      destination: dest,
+      classification: item.classification,
+      mls_number: item.mls_number,
+      source_kind: item.source_kind,
     };
   });
