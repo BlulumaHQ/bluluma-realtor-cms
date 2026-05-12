@@ -931,6 +931,7 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
       }
     }
 
+    if (!html) throw new Error(`Could not retrieve page content. ${diagnostics.firecrawl_error ?? "Plain fetch failed."}`);
     const parsed = parseFromContent(html, markdown, diagnostics.final_url ?? url, diagnostics, links, structured);
 
     // Image preflight: validate kept gallery URLs by fetching headers/bytes.
