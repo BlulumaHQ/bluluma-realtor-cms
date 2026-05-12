@@ -16,6 +16,29 @@ function fmtPrice(p: number | null) {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(p);
 }
 
+function asFeatureObject(features: any) {
+  return features && !Array.isArray(features) && typeof features === "object" ? features : null;
+}
+
+function asList(value: any): string[] {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value === "string" && value.trim()) return value.split(/\n|,|;|•/).map((s) => s.trim()).filter(Boolean);
+  return [];
+}
+
+function featureList(features: any): string[] {
+  if (Array.isArray(features)) return features.map(String);
+  const obj = asFeatureObject(features);
+  if (!obj) return [];
+  return [
+    ...asList(obj.feature_list),
+    ...asList(obj.interior_features),
+    ...asList(obj.exterior_features),
+    ...asList(obj.amenities),
+    ...asList(obj.appliances),
+  ].filter((item, index, arr) => arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === index);
+}
+
 function Inner() {
   const { slug } = Route.useParams();
   const { data: r } = useRealtor();
@@ -40,6 +63,26 @@ function Inner() {
     ? data.photos.map((p) => p.image_url)
     : l.primary_image_url ? [l.primary_image_url] : [];
   const realtor = r!.realtor!;
+  const extra = asFeatureObject(l.features);
+  const features = featureList(l.features);
+  const propertyDetails = extra ? [
+    ["Year built", extra.year_built],
+    ["Strata fee", extra.strata_fee],
+    ["Taxes", extra.taxes],
+    ["Zoning", extra.zoning],
+    ["Parking", extra.parking],
+    ["Garage / carport", extra.garage],
+    ["Style", extra.property_style],
+    ["Building type", extra.building_type],
+    ["Floor area", extra.floor_area],
+    ["Land size", extra.land_size],
+    ["Heating", extra.heating],
+    ["Cooling", extra.cooling],
+    ["Fireplace", extra.fireplace],
+    ["Basement", extra.basement],
+    ["View", extra.view],
+  ].filter(([, value]) => value) : [];
+  const locationDetails = extra ? [extra.neighborhood, extra.subdivision, extra.region, extra.municipality].filter(Boolean) : [];
 
   return (
     <article>
@@ -85,12 +128,39 @@ function Inner() {
             </div>
           )}
 
-          {Array.isArray(l.features) && l.features.length > 0 && (
+          {propertyDetails.length > 0 && (
+            <div className="mt-12">
+              <h2 className="font-display text-2xl mb-4">Property details</h2>
+              <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                {propertyDetails.map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4 border-b border-border pb-2">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="text-right text-foreground/85">{String(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {features.length > 0 && (
             <div className="mt-12">
               <h2 className="font-display text-2xl mb-4">Features</h2>
               <ul className="grid sm:grid-cols-2 gap-2 text-foreground/80">
-                {l.features.map((f, i) => <li key={i} className="flex gap-2"><span className="text-accent">•</span>{f}</li>)}
+                {features.map((f, i) => <li key={i} className="flex gap-2"><span className="text-accent">•</span>{f}</li>)}
               </ul>
+            </div>
+          )}
+
+          {locationDetails.length > 0 && (
+            <div className="mt-12">
+              <h2 className="font-display text-2xl mb-4">Location</h2>
+              <p className="text-foreground/80">{locationDetails.join(" · ")}</p>
+            </div>
+          )}
+
+          {extra?.brokerage && (
+            <div className="mt-12 text-sm text-muted-foreground">
+              Listed by {extra.listing_agent ? `${extra.listing_agent} · ` : ""}{extra.brokerage}
             </div>
           )}
 
