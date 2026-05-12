@@ -1098,7 +1098,7 @@ export const paragonImportListing = createServerFn({ method: "POST" })
       listing = inserted as Listing;
     }
 
-    const listing = inserted as Listing;
+    
     const basePath = `${data.realtorId}/${listing.id}`;
     const storedUrls: string[] = [];
     const failedUrls: string[] = [];
