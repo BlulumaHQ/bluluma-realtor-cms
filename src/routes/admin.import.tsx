@@ -77,7 +77,7 @@ function Page() {
   const onAnalyze = async () => {
     setError(null);
     if (!realtorId) return setError("Select a realtor first.");
-    const urls = links.split("\n").map((s) => s.trim()).filter(Boolean);
+    const urls = links.split("\n").map((s: string) => s.trim()).filter(Boolean);
     if (urls.length === 0) return setError("Paste at least one Paragon link.");
     setAnalyzing(true);
     setEntries([]);
