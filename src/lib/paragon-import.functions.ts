@@ -865,6 +865,7 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
       gallery_images_kept: 0,
       images_rejected: 0,
       rejected_images: [],
+      image_checks: [],
       selectors_used: [],
       selectors_failed: [],
       appears_client_side_rendered: false,
