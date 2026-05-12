@@ -266,6 +266,73 @@ function findFact(facts: RawFact[], patterns: RegExp[]) {
   return null;
 }
 
+function findFact(facts: RawFact[], patterns: RegExp[], opts?: { excludeSources?: string[]; validate?: (v: string) => boolean }) {
+  for (const p of patterns) {
+    for (const f of facts) {
+      if (!p.test(f.label)) continue;
+      if (opts?.excludeSources?.includes(f.source)) continue;
+      if (opts?.validate && !opts.validate(f.value)) continue;
+      if (f.value) return f.value;
+    }
+  }
+  return null;
+}
+
+// Stricter fact lookup: ignore loose text-regex source (which often grabs neighboring text).
+function findStructured(facts: RawFact[], patterns: RegExp[], validate?: (v: string) => boolean) {
+  return findFact(facts, patterns, { excludeSources: ["text-regex"], validate });
+}
+
+// Field validators / sanitizers
+const STRUCTURED_SOURCES = ["table-row", "definition-list", "detail-block", "markdown"];
+
+function isPlausibleCity(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const s = compact(v);
+  if (s.length < 2 || s.length > 50) return false;
+  if (/[\/\\]/.test(s)) return false;
+  if (/\d/.test(s)) return false;
+  if (/(electricity|gas|water|sewer|storey|storeys|story|stories|heating|cooling|fireplace|garage|parking|basement|zoning|municipal\b|none|n\/a|n\.a\.|listing|mls|price|tax|strata|amenit|appliance|utility|utilities|feature)/i.test(s)) return false;
+  return /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' .,-]*$/.test(s);
+}
+
+function sanitizeCity(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = compact(v).replace(/,.*$/, "").trim();
+  return isPlausibleCity(s) ? s : null;
+}
+
+function isPlausibleYear(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const m = String(v).match(/\b(1[89]\d{2}|20\d{2}|21\d{2})\b/);
+  if (!m) return false;
+  const n = Number(m[1]);
+  return n >= 1800 && n <= new Date().getFullYear() + 3;
+}
+
+function sanitizeYear(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const m = String(v).match(/\b(1[89]\d{2}|20\d{2}|21\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+function isMoneyLike(v: string | null | undefined): boolean {
+  if (!v) return false;
+  return /\$|\b\d{2,3}(?:[.,]\d{3})+\b|\bmonthly\b|\bper month\b|\bper year\b|\bannual/i.test(v);
+}
+
+function sanitizeMoneyText(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = compact(v).slice(0, 80);
+  return isMoneyLike(s) ? s : null;
+}
+
+function isShortLabelValue(v: string | null | undefined, max = 80): boolean {
+  if (!v) return false;
+  const s = compact(v);
+  return s.length > 0 && s.length <= max && !/\$\d/.test(s);
+}
+
 function splitList(value: string | null | undefined): string[] {
   if (!value) return [];
   return compact(value)
