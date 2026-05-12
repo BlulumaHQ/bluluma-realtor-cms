@@ -1016,6 +1016,7 @@ type ImportPayload = {
   paragonUrl: string;
   listing: Partial<Listing>;
   imageUrls: string[];
+  existingListingId?: string | null;
 };
 
 function slugify(s: string) {
