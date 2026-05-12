@@ -1080,13 +1080,23 @@ export const paragonImportListing = createServerFn({ method: "POST" })
       baseListing.status = baseListing.status ?? "active";
     }
 
-    if (!baseListing.slug) {
+    if (!baseListing.slug && !data.existingListingId) {
       const seed = baseListing.address || baseListing.title || baseListing.mls_number || `listing-${Date.now()}`;
       baseListing.slug = `${slugify(seed)}-${Math.random().toString(36).slice(2, 6)}`;
     }
 
-    const { data: inserted, error: insertErr } = await sb.from("listings").insert({ ...baseListing, updated_at: new Date().toISOString() }).select("*").single();
-    if (insertErr) throw insertErr;
+    let listing: Listing;
+    if (data.existingListingId) {
+      const updatePayload: any = { ...baseListing, updated_at: new Date().toISOString() };
+      delete updatePayload.slug;
+      const { data: updated, error: updErr } = await sb.from("listings").update(updatePayload).eq("id", data.existingListingId).select("*").single();
+      if (updErr) throw updErr;
+      listing = updated as Listing;
+    } else {
+      const { data: inserted, error: insertErr } = await sb.from("listings").insert({ ...baseListing, updated_at: new Date().toISOString() }).select("*").single();
+      if (insertErr) throw insertErr;
+      listing = inserted as Listing;
+    }
 
     const listing = inserted as Listing;
     const basePath = `${data.realtorId}/${listing.id}`;
