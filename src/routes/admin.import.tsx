@@ -344,6 +344,20 @@ function ReviewCard({ card, onChange, onSave }: { card: Card; onChange: (patch: 
               <DiagnosticList title="Selectors failed" items={parsed.diagnostics.selectors_failed} />
             </div>
             <details className="mt-3">
+              <summary className="cursor-pointer text-muted-foreground">Image preflight checks ({parsed.diagnostics.image_checks.length})</summary>
+              <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">
+                {parsed.diagnostics.image_checks.map((c, i) => (
+                  <div key={`${c.url}-${i}`} className="p-2 grid md:grid-cols-[1fr_120px_160px_160px] gap-2">
+                    <div className="break-all font-mono">{c.url}</div>
+                    <div className={c.ok ? "text-accent" : "text-destructive"}>{c.ok ? "ok" : "rejected"}</div>
+                    <div className="font-mono text-muted-foreground">HTTP {c.status ?? "—"} · {c.content_type ?? "?"}</div>
+                    <div className="font-mono text-muted-foreground">{c.content_length ?? "?"}B · {c.reason ?? ""}</div>
+                  </div>
+                ))}
+                {parsed.diagnostics.image_checks.length === 0 && <div className="p-3 text-sm text-muted-foreground">No images to preflight.</div>}
+              </div>
+            </details>
+            <details className="mt-3">
               <summary className="cursor-pointer text-muted-foreground">Rejected images ({parsed.rejected_images.length})</summary>
               <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">
                 {parsed.rejected_images.map((img, i) => (
