@@ -621,7 +621,9 @@ function parseFromContent(
 
   const metaImages = [...getAllMeta(html, "og:image"), ...getAllMeta(html, "og:image:secure_url"), ...getAllMeta(html, "twitter:image")];
   const candidates = collectImageCandidates(html, sourceUrl, metaImages, firecrawlLinks, structuredImages(firecrawlJson));
-  const uniqueCandidates = Array.from(new Map(candidates.map((c) => [`${c.url}|${c.source}|${c.context}`, c])).values());
+  const candidateMap = new Map<string, ImageCandidate>();
+  for (const c of candidates) candidateMap.set(`${c.url}|${c.source}|${c.context}`, c);
+  const uniqueCandidates = Array.from(candidateMap.values());
   const { kept, rejected } = filterPropertyImages(uniqueCandidates);
   const allImageUrls = Array.from(new Set(uniqueCandidates.map((c) => c.url)));
   const pdfUrl = extractPdf(html, firecrawlLinks, sourceUrl);
