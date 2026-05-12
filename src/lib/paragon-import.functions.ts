@@ -887,7 +887,10 @@ export const paragonImportListing = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sb = getAdminClient();
     const dest = data.destination;
-    const safeImageUrls = data.imageUrls.filter((url, index, arr) => /^https?:\/\//i.test(url) && arr.indexOf(url) === index).slice(0, 80);
+    const safeImageUrls = data.imageUrls
+      .filter((url, index, arr) => /^https?:\/\//i.test(url) && arr.indexOf(url) === index)
+      .filter((url) => !rejectReason({ url, source: "save", context: url, score: 20 }))
+      .slice(0, 80);
 
     const baseListing: any = { ...data.listing };
     baseListing.realtor_id = data.realtorId;
