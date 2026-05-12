@@ -618,9 +618,24 @@ function parseFromContent(
   const addressRegex = searchable.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'-]{4,90}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir)\b[^\n,]*/i)?.[0] ?? null;
   const address = findFact(facts, [/^(full\s*)?address$/i, /property address/i, /civic address/i, /street address/i]) ?? structuredString(firecrawlJson, ["address", "full_address", "street_address"]) ?? addressFromLd ?? addressFromTitle ?? addressRegex;
 
-  const city = findFact(facts, [/^city$/i, /municipality/i, /^community$/i]) ?? structuredString(firecrawlJson, ["city", "municipality", "community"]) ?? addressObj?.addressLocality ?? null;
-  const province = findFact(facts, [/province/i, /address region/i, /^state$/i]) ?? structuredString(firecrawlJson, ["province", "state", "region"]) ?? addressObj?.addressRegion ?? searchable.match(/\b(BC|British Columbia|AB|Alberta|ON|Ontario)\b/i)?.[1] ?? null;
-  const postal_code = findFact(facts, [/postal/i, /zip/i]) ?? structuredString(firecrawlJson, ["postal_code", "postalCode", "zip"]) ?? addressObj?.postalCode ?? searchable.match(/\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b/i)?.[0] ?? null;
+  const cityFact = findStructured(facts, [/^city$/i, /^city\/town$/i, /^city\s*\/\s*municipality$/i], (v) => isPlausibleCity(v));
+  const cityCandidate = sanitizeCity(cityFact)
+    ?? sanitizeCity(structuredString(firecrawlJson, ["city", "municipality", "community"]))
+    ?? sanitizeCity(addressObj?.addressLocality);
+  const city = cityCandidate
+    ?? sanitizeCity(findStructured(facts, [/^community$/i, /^municipality$/i], (v) => isPlausibleCity(v)));
+
+  const province = findStructured(facts, [/^province$/i, /address region/i, /^state$/i], (v) => /^[A-Za-z .]{2,40}$/.test(v))
+    ?? structuredString(firecrawlJson, ["province", "state", "region"])
+    ?? addressObj?.addressRegion
+    ?? searchable.match(/\b(BC|British Columbia|AB|Alberta|ON|Ontario|MB|Manitoba|QC|Quebec|SK|Saskatchewan|NB|New Brunswick|NS|Nova Scotia|NL|Newfoundland|PE|Prince Edward Island|YT|Yukon|NT|Northwest Territories|NU|Nunavut)\b/i)?.[1]
+    ?? null;
+
+  const postal_code = findStructured(facts, [/postal/i, /zip/i], (v) => /\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b|\b\d{5}(?:-\d{4})?\b/i.test(v))
+    ?? structuredString(firecrawlJson, ["postal_code", "postalCode", "zip"])
+    ?? addressObj?.postalCode
+    ?? searchable.match(/\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b/i)?.[0]
+    ?? null;
 
   const priceSource =
     findFact(facts, [/list price/i, /^price$/i, /asking/i, /sale price/i]) ??
