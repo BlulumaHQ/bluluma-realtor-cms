@@ -258,13 +258,6 @@ function extractFacts(html: string, markdown: string | null): RawFact[] {
   return facts;
 }
 
-function findFact(facts: RawFact[], patterns: RegExp[]) {
-  for (const p of patterns) {
-    const hit = facts.find((f) => p.test(f.label));
-    if (hit?.value) return hit.value;
-  }
-  return null;
-}
 
 function findFact(facts: RawFact[], patterns: RegExp[], opts?: { excludeSources?: string[]; validate?: (v: string) => boolean }) {
   for (const p of patterns) {
