@@ -411,10 +411,11 @@ function rejectReason(candidate: ImageCandidate): string | null {
   const lowerUrl = decodeURIComponent(candidate.url).toLowerCase();
   const lowerContext = candidate.context.toLowerCase();
   const combined = `${lowerUrl} ${lowerContext}`;
+  const hasPropertySignal = /(gallery|carousel|property|listing-photo|propertyphoto|mlsphoto|photo-gallery|photo viewer|getphoto|large|fullsize)/i.test(combined);
   if (/\.(svg|gif|ico)(?:[?#].*)?$/i.test(lowerUrl)) return "Rejected UI/vector image format";
-  if (/(favicon|sprite|icon|marker|map-pin|map_|staticmap|maps\.google|googleapis\.com\/maps|placeholder|blank|loading|transparent|pixel|ui-|button|print|share)/i.test(combined)) return "Rejected UI icon, map, or placeholder image";
-  if (/(logo|mls[-_\s]?logo|brokerage[-_\s]?logo|company[-_\s]?logo|brandmark|watermark)/i.test(combined)) return "Rejected logo/branding image";
-  if (/(headshot|agent|avatar|profile|portrait|realtor|broker|brokerage|office|team|signature)/i.test(combined) && !/(gallery|carousel|property|listing-photo|propertyphoto|mlsphoto|photo-gallery|photo viewer)/i.test(combined)) return "Rejected agent, avatar, office, or brokerage image";
+  if (/(favicon|sprite|icon|marker|map-pin|map_|staticmap|maps\.google|googleapis\.com\/maps|placeholder|blank|loading|transparent|pixel|ui-|button|print|share)/i.test(lowerUrl) || (!hasPropertySignal && /(favicon|sprite|icon|marker|map-pin|map_|placeholder|button|print|share)/i.test(lowerContext))) return "Rejected UI icon, map, or placeholder image";
+  if (/(logo|mls[-_\s]?logo|brokerage[-_\s]?logo|company[-_\s]?logo|brandmark|watermark)/i.test(lowerUrl) || (!hasPropertySignal && /(logo|brokerage[-_\s]?logo|company[-_\s]?logo|brandmark|watermark)/i.test(lowerContext))) return "Rejected logo/branding image";
+  if (/(headshot|agent|avatar|profile|portrait|realtor|broker|brokerage|office|team|signature)/i.test(combined) && !hasPropertySignal) return "Rejected agent, avatar, office, or brokerage image";
   if ((candidate.width && candidate.width < 220) || (candidate.height && candidate.height < 160)) return "Rejected image that appears too small";
   if (candidate.width && candidate.height && candidate.width * candidate.height < 70000) return "Rejected image that appears too small";
   if (candidate.score < 5) return "Rejected image without property-gallery signals";
