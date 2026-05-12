@@ -302,7 +302,13 @@ function ReviewCard({ card, onChange, onSave }: { card: Card; onChange: (patch: 
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
               {images.map((u, i) => (
                 <div key={u + i} className="relative aspect-[4/3] bg-muted border border-border overflow-hidden">
-                  <img src={u} className="h-full w-full object-cover" alt="Imported property gallery candidate" />
+                  <img
+                    src={`/api/image-proxy?url=${encodeURIComponent(u)}`}
+                    className="h-full w-full object-cover"
+                    alt="Imported property gallery candidate"
+                    loading="lazy"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }}
+                  />
                   <div className="absolute left-1 top-1 flex gap-1">
                     <button onClick={() => makePrimary(i)} className="bg-background/90 text-foreground text-[10px] px-1.5 py-0.5 border border-border">{i === 0 ? "Primary" : "Set primary"}</button>
                   </div>
@@ -337,6 +343,20 @@ function ReviewCard({ card, onChange, onSave }: { card: Card; onChange: (patch: 
               <DiagnosticList title="Selectors used" items={parsed.diagnostics.selectors_used} />
               <DiagnosticList title="Selectors failed" items={parsed.diagnostics.selectors_failed} />
             </div>
+            <details className="mt-3">
+              <summary className="cursor-pointer text-muted-foreground">Image preflight checks ({parsed.diagnostics.image_checks.length})</summary>
+              <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">
+                {parsed.diagnostics.image_checks.map((c, i) => (
+                  <div key={`${c.url}-${i}`} className="p-2 grid md:grid-cols-[1fr_120px_160px_160px] gap-2">
+                    <div className="break-all font-mono">{c.url}</div>
+                    <div className={c.ok ? "text-accent" : "text-destructive"}>{c.ok ? "ok" : "rejected"}</div>
+                    <div className="font-mono text-muted-foreground">HTTP {c.status ?? "—"} · {c.content_type ?? "?"}</div>
+                    <div className="font-mono text-muted-foreground">{c.content_length ?? "?"}B · {c.reason ?? ""}</div>
+                  </div>
+                ))}
+                {parsed.diagnostics.image_checks.length === 0 && <div className="p-3 text-sm text-muted-foreground">No images to preflight.</div>}
+              </div>
+            </details>
             <details className="mt-3">
               <summary className="cursor-pointer text-muted-foreground">Rejected images ({parsed.rejected_images.length})</summary>
               <div className="mt-2 max-h-72 overflow-auto border border-border divide-y divide-border">

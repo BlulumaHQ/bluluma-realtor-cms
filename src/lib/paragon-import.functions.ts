@@ -60,6 +60,17 @@ type ImageCandidate = {
   score: number;
 };
 
+type ImageCheck = {
+  url: string;
+  ok: boolean;
+  status: number | null;
+  content_type: string | null;
+  content_length: number | null;
+  width: number | null;
+  height: number | null;
+  reason: string | null;
+};
+
 type Diagnostics = {
   fetch_success: boolean;
   html_returned: boolean;
@@ -79,6 +90,7 @@ type Diagnostics = {
   gallery_images_kept: number;
   images_rejected: number;
   rejected_images: RejectedImage[];
+  image_checks: ImageCheck[];
   selectors_used: string[];
   selectors_failed: string[];
   appears_client_side_rendered: boolean;
@@ -246,12 +258,72 @@ function extractFacts(html: string, markdown: string | null): RawFact[] {
   return facts;
 }
 
-function findFact(facts: RawFact[], patterns: RegExp[]) {
+
+function findFact(facts: RawFact[], patterns: RegExp[], opts?: { excludeSources?: string[]; validate?: (v: string) => boolean }) {
   for (const p of patterns) {
-    const hit = facts.find((f) => p.test(f.label));
-    if (hit?.value) return hit.value;
+    for (const f of facts) {
+      if (!p.test(f.label)) continue;
+      if (opts?.excludeSources?.includes(f.source)) continue;
+      if (opts?.validate && !opts.validate(f.value)) continue;
+      if (f.value) return f.value;
+    }
   }
   return null;
+}
+
+// Stricter fact lookup: ignore loose text-regex source (which often grabs neighboring text).
+function findStructured(facts: RawFact[], patterns: RegExp[], validate?: (v: string) => boolean) {
+  return findFact(facts, patterns, { excludeSources: ["text-regex"], validate });
+}
+
+// Field validators / sanitizers
+const STRUCTURED_SOURCES = ["table-row", "definition-list", "detail-block", "markdown"];
+
+function isPlausibleCity(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const s = compact(v);
+  if (s.length < 2 || s.length > 50) return false;
+  if (/[\/\\]/.test(s)) return false;
+  if (/\d/.test(s)) return false;
+  if (/(electricity|gas|water|sewer|storey|storeys|story|stories|heating|cooling|fireplace|garage|parking|basement|zoning|municipal\b|none|n\/a|n\.a\.|listing|mls|price|tax|strata|amenit|appliance|utility|utilities|feature)/i.test(s)) return false;
+  return /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' .,-]*$/.test(s);
+}
+
+function sanitizeCity(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = compact(v).replace(/,.*$/, "").trim();
+  return isPlausibleCity(s) ? s : null;
+}
+
+function isPlausibleYear(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const m = String(v).match(/\b(1[89]\d{2}|20\d{2}|21\d{2})\b/);
+  if (!m) return false;
+  const n = Number(m[1]);
+  return n >= 1800 && n <= new Date().getFullYear() + 3;
+}
+
+function sanitizeYear(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const m = String(v).match(/\b(1[89]\d{2}|20\d{2}|21\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+function isMoneyLike(v: string | null | undefined): boolean {
+  if (!v) return false;
+  return /\$|\b\d{2,3}(?:[.,]\d{3})+\b|\bmonthly\b|\bper month\b|\bper year\b|\bannual/i.test(v);
+}
+
+function sanitizeMoneyText(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = compact(v).slice(0, 80);
+  return isMoneyLike(s) ? s : null;
+}
+
+function isShortLabelValue(v: string | null | undefined, max = 80): boolean {
+  if (!v) return false;
+  const s = compact(v);
+  return s.length > 0 && s.length <= max && !/\$\d/.test(s);
 }
 
 function splitList(value: string | null | undefined): string[] {
@@ -546,9 +618,24 @@ function parseFromContent(
   const addressRegex = searchable.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'-]{4,90}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir)\b[^\n,]*/i)?.[0] ?? null;
   const address = findFact(facts, [/^(full\s*)?address$/i, /property address/i, /civic address/i, /street address/i]) ?? structuredString(firecrawlJson, ["address", "full_address", "street_address"]) ?? addressFromLd ?? addressFromTitle ?? addressRegex;
 
-  const city = findFact(facts, [/^city$/i, /municipality/i, /^community$/i]) ?? structuredString(firecrawlJson, ["city", "municipality", "community"]) ?? addressObj?.addressLocality ?? null;
-  const province = findFact(facts, [/province/i, /address region/i, /^state$/i]) ?? structuredString(firecrawlJson, ["province", "state", "region"]) ?? addressObj?.addressRegion ?? searchable.match(/\b(BC|British Columbia|AB|Alberta|ON|Ontario)\b/i)?.[1] ?? null;
-  const postal_code = findFact(facts, [/postal/i, /zip/i]) ?? structuredString(firecrawlJson, ["postal_code", "postalCode", "zip"]) ?? addressObj?.postalCode ?? searchable.match(/\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b/i)?.[0] ?? null;
+  const cityFact = findStructured(facts, [/^city$/i, /^city\/town$/i, /^city\s*\/\s*municipality$/i], (v) => isPlausibleCity(v));
+  const cityCandidate = sanitizeCity(cityFact)
+    ?? sanitizeCity(structuredString(firecrawlJson, ["city", "municipality", "community"]))
+    ?? sanitizeCity(addressObj?.addressLocality);
+  const city = cityCandidate
+    ?? sanitizeCity(findStructured(facts, [/^community$/i, /^municipality$/i], (v) => isPlausibleCity(v)));
+
+  const province = findStructured(facts, [/^province$/i, /address region/i, /^state$/i], (v) => /^[A-Za-z .]{2,40}$/.test(v))
+    ?? structuredString(firecrawlJson, ["province", "state", "region"])
+    ?? addressObj?.addressRegion
+    ?? searchable.match(/\b(BC|British Columbia|AB|Alberta|ON|Ontario|MB|Manitoba|QC|Quebec|SK|Saskatchewan|NB|New Brunswick|NS|Nova Scotia|NL|Newfoundland|PE|Prince Edward Island|YT|Yukon|NT|Northwest Territories|NU|Nunavut)\b/i)?.[1]
+    ?? null;
+
+  const postal_code = findStructured(facts, [/postal/i, /zip/i], (v) => /\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b|\b\d{5}(?:-\d{4})?\b/i.test(v))
+    ?? structuredString(firecrawlJson, ["postal_code", "postalCode", "zip"])
+    ?? addressObj?.postalCode
+    ?? searchable.match(/\b[A-Z]\d[A-Z][ -]?\d[A-Z]\d\b/i)?.[0]
+    ?? null;
 
   const priceSource =
     findFact(facts, [/list price/i, /^price$/i, /asking/i, /sale price/i]) ??
@@ -590,31 +677,31 @@ function parseFromContent(
     municipality: findFact(facts, [/municipality/i]) ?? structuredString(firecrawlJson, ["municipality"]),
     latitude: structuredString(firecrawlJson, ["latitude", "lat"]) ?? searchable.match(/"lat(?:itude)?"\s*:\s*([\-\d.]+)/i)?.[1] ?? null,
     longitude: structuredString(firecrawlJson, ["longitude", "lng", "lon"]) ?? searchable.match(/"l(?:o)?ng(?:itude)?"\s*:\s*([\-\d.]+)/i)?.[1] ?? null,
-    year_built: findFact(facts, [/year built/i, /built in/i]) ?? structuredString(firecrawlJson, ["year_built"]),
-    strata_fee: findFact(facts, [/strata/i, /maint(enance)? fee/i]) ?? structuredString(firecrawlJson, ["strata_fee", "maintenance_fee"]),
-    taxes: findFact(facts, [/tax(es)?/i, /property tax/i]) ?? structuredString(firecrawlJson, ["taxes", "property_taxes"]),
-    zoning: findFact(facts, [/zoning/i]) ?? structuredString(firecrawlJson, ["zoning"]),
-    parking: findFact(facts, [/parking/i]) ?? structuredString(firecrawlJson, ["parking"]),
-    garage: findFact(facts, [/garage/i, /carport/i]) ?? structuredString(firecrawlJson, ["garage", "carport"]),
-    property_style: findFact(facts, [/style/i]) ?? structuredString(firecrawlJson, ["property_style", "style"]),
+    year_built: sanitizeYear(findStructured(facts, [/^year built$/i, /^built in$/i, /^year$/i], (v) => isPlausibleYear(v))) ?? sanitizeYear(structuredString(firecrawlJson, ["year_built"])),
+    strata_fee: sanitizeMoneyText(findStructured(facts, [/^strata fee/i, /strata fees?/i, /^maint(enance)? fee/i, /monthly fee/i], (v) => isMoneyLike(v))) ?? sanitizeMoneyText(structuredString(firecrawlJson, ["strata_fee", "maintenance_fee"])),
+    taxes: sanitizeMoneyText(findStructured(facts, [/^taxes?$/i, /^property tax(es)?$/i, /^annual tax(es)?$/i, /^gross taxes$/i], (v) => isMoneyLike(v) || /\b\d{3,}\b/.test(v))) ?? sanitizeMoneyText(structuredString(firecrawlJson, ["taxes", "property_taxes"])),
+    zoning: findStructured(facts, [/^zoning$/i], (v) => isShortLabelValue(v, 60)) ?? structuredString(firecrawlJson, ["zoning"]),
+    parking: findStructured(facts, [/^parking$/i, /^parking type$/i, /^parking spaces?$/i], (v) => isShortLabelValue(v, 120)) ?? structuredString(firecrawlJson, ["parking"]),
+    garage: findStructured(facts, [/^garage$/i, /^carport$/i, /^garage type$/i], (v) => isShortLabelValue(v, 120)) ?? structuredString(firecrawlJson, ["garage", "carport"]),
+    property_style: findStructured(facts, [/^style$/i, /^architectural style$/i, /^property style$/i], (v) => isShortLabelValue(v, 80)) ?? structuredString(firecrawlJson, ["property_style", "style"]),
     building_type,
-    land_size: findFact(facts, [/land size/i]) ?? structuredString(firecrawlJson, ["land_size"]),
-    floor_area: findFact(facts, [/floor area/i]) ?? structuredString(firecrawlJson, ["floor_area"]),
-    units: findFact(facts, [/units/i, /number of units/i]) ?? structuredString(firecrawlJson, ["units"]),
-    lease_sale_information: findFact(facts, [/lease/i, /sale information/i, /lease\/sale/i]) ?? structuredString(firecrawlJson, ["lease_sale_information", "lease_information"]),
-    heating: findFact(facts, [/heating/i]) ?? structuredString(firecrawlJson, ["heating"]),
-    cooling: findFact(facts, [/cooling/i, /air conditioning/i]) ?? structuredString(firecrawlJson, ["cooling"]),
-    fireplace: findFact(facts, [/fireplace/i]) ?? structuredString(firecrawlJson, ["fireplace"]),
-    basement: findFact(facts, [/basement/i]) ?? structuredString(firecrawlJson, ["basement"]),
-    view: findFact(facts, [/^view$/i, /views/i]) ?? structuredString(firecrawlJson, ["view"]),
-    site_influences: splitList(findFact(facts, [/site influences/i]) ?? structuredString(firecrawlJson, ["site_influences"])),
-    nearby_amenities: splitList(findFact(facts, [/nearby amenities/i, /nearby/i]) ?? structuredString(firecrawlJson, ["nearby_amenities"])),
-    public_transportation: findFact(facts, [/public transportation/i, /transit/i]) ?? structuredString(firecrawlJson, ["public_transportation", "transit"]),
-    interior_features: splitList(findFact(facts, [/interior features/i, /interior/i]) ?? structuredString(firecrawlJson, ["interior_features"])),
-    exterior_features: splitList(findFact(facts, [/exterior features/i, /exterior/i]) ?? structuredString(firecrawlJson, ["exterior_features"])),
-    amenities: splitList(findFact(facts, [/amenities/i]) ?? structuredString(firecrawlJson, ["amenities"])),
-    appliances: splitList(findFact(facts, [/appliances/i]) ?? structuredString(firecrawlJson, ["appliances"])),
-    utilities: splitList(findFact(facts, [/utilities/i]) ?? structuredString(firecrawlJson, ["utilities"])),
+    land_size: findStructured(facts, [/^land size$/i], (v) => isShortLabelValue(v, 80)) ?? structuredString(firecrawlJson, ["land_size"]),
+    floor_area: findStructured(facts, [/^floor area$/i, /^living area$/i, /^total area$/i], (v) => isShortLabelValue(v, 80)) ?? structuredString(firecrawlJson, ["floor_area"]),
+    units: findStructured(facts, [/^units$/i, /^number of units$/i], (v) => isShortLabelValue(v, 60)) ?? structuredString(firecrawlJson, ["units"]),
+    lease_sale_information: findStructured(facts, [/lease\/sale/i, /^lease information$/i, /^sale information$/i, /^lease$/i], (v) => isShortLabelValue(v, 200)) ?? structuredString(firecrawlJson, ["lease_sale_information", "lease_information"]),
+    heating: findStructured(facts, [/^heating$/i, /^heating type$/i, /^heat$/i], (v) => isShortLabelValue(v, 160)) ?? structuredString(firecrawlJson, ["heating"]),
+    cooling: findStructured(facts, [/^cooling$/i, /air conditioning/i], (v) => isShortLabelValue(v, 160)) ?? structuredString(firecrawlJson, ["cooling"]),
+    fireplace: findStructured(facts, [/^fireplace/i], (v) => isShortLabelValue(v, 120)) ?? structuredString(firecrawlJson, ["fireplace"]),
+    basement: findStructured(facts, [/^basement$/i, /^basement type$/i], (v) => isShortLabelValue(v, 200)) ?? structuredString(firecrawlJson, ["basement"]),
+    view: findStructured(facts, [/^view$/i, /^views$/i], (v) => isShortLabelValue(v, 200)) ?? structuredString(firecrawlJson, ["view"]),
+    site_influences: splitList(findStructured(facts, [/site influences/i]) ?? structuredString(firecrawlJson, ["site_influences"])),
+    nearby_amenities: splitList(findStructured(facts, [/nearby amenities/i, /^nearby$/i]) ?? structuredString(firecrawlJson, ["nearby_amenities"])),
+    public_transportation: findStructured(facts, [/public transportation/i, /^transit$/i], (v) => isShortLabelValue(v, 200)) ?? structuredString(firecrawlJson, ["public_transportation", "transit"]),
+    interior_features: splitList(findStructured(facts, [/^interior features$/i, /^interior$/i]) ?? structuredString(firecrawlJson, ["interior_features"])),
+    exterior_features: splitList(findStructured(facts, [/^exterior features$/i, /^exterior$/i]) ?? structuredString(firecrawlJson, ["exterior_features"])),
+    amenities: splitList(findStructured(facts, [/^amenities$/i, /^community amenities$/i]) ?? structuredString(firecrawlJson, ["amenities"])),
+    appliances: splitList(findStructured(facts, [/^appliances$/i, /^included appliances$/i]) ?? structuredString(firecrawlJson, ["appliances"])),
+    utilities: splitList(findStructured(facts, [/^utilities$/i, /^services$/i, /^services\s*\/\s*utilities$/i]) ?? structuredString(firecrawlJson, ["utilities", "services"])),
     feature_list: featureList.filter((v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i),
     raw_facts: facts,
   };
@@ -778,6 +865,7 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
       gallery_images_kept: 0,
       images_rejected: 0,
       rejected_images: [],
+      image_checks: [],
       selectors_used: [],
       selectors_failed: [],
       appears_client_side_rendered: false,
@@ -844,8 +932,83 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
     }
 
     if (!html) throw new Error(`Could not retrieve page content. ${diagnostics.firecrawl_error ?? "Plain fetch failed."}`);
-    return parseFromContent(html, markdown, diagnostics.final_url ?? url, diagnostics, links, structured);
+    const parsed = parseFromContent(html, markdown, diagnostics.final_url ?? url, diagnostics, links, structured);
+
+    // Image preflight: validate kept gallery URLs by fetching headers/bytes.
+    const checks = await preflightImages(parsed.image_urls, diagnostics.final_url ?? url);
+    diagnostics.image_checks = checks;
+    const goodUrls = new Set(checks.filter((c) => c.ok).map((c) => c.url));
+    const droppedByPreflight = parsed.image_urls.filter((u) => !goodUrls.has(u));
+    for (const u of droppedByPreflight) {
+      const c = checks.find((x) => x.url === u);
+      parsed.rejected_images.push({
+        url: u,
+        reason: c?.reason ?? "Image preflight failed",
+        source: "preflight",
+        context: c ? `status=${c.status ?? "?"} type=${c.content_type ?? "?"} len=${c.content_length ?? "?"}` : "no response",
+      });
+    }
+    parsed.image_urls = parsed.image_urls.filter((u) => goodUrls.has(u));
+    diagnostics.gallery_images_kept = parsed.image_urls.length;
+    diagnostics.gallery_images_detected = parsed.image_urls.length > 0;
+    diagnostics.images_rejected = parsed.rejected_images.length;
+    diagnostics.rejected_images = parsed.rejected_images;
+    if (parsed.image_urls.length === 0 && !parsed.parse_warnings.some((w) => /gallery images were detected/i.test(w))) {
+      parsed.parse_warnings.push("No property gallery images were detected. Please upload photos manually.");
+    }
+    return parsed;
   });
+
+async function preflightImages(urls: string[], referer: string): Promise<ImageCheck[]> {
+  const out: ImageCheck[] = [];
+  const limit = 6;
+  let i = 0;
+  async function worker() {
+    while (i < urls.length) {
+      const idx = i++;
+      const u = urls[idx];
+      out[idx] = await preflightOne(u, referer);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, urls.length) }, () => worker()));
+  return out;
+}
+
+async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
+  let origin = referer;
+  try { origin = new URL(url).origin; } catch { /* keep referer */ }
+  const baseHeaders = {
+    "User-Agent": "Mozilla/5.0 (compatible; BlulumaImporter/1.0)",
+    Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8",
+    Referer: origin + "/",
+  } as Record<string, string>;
+  try {
+    // Try a range GET (1KB) — many CDNs reject HEAD but support range.
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { ...baseHeaders, Range: "bytes=0-1024" },
+      redirect: "follow",
+    });
+    const ct = res.headers.get("content-type");
+    const lenStr = res.headers.get("content-length") ?? res.headers.get("content-range")?.split("/")?.[1] ?? null;
+    const len = lenStr ? Number(lenStr) : null;
+    if (!res.ok && res.status !== 206) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
+    }
+    if (!ct || !/^image\//i.test(ct)) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
+    }
+    if (/svg|gif|x-icon|vnd\.microsoft\.icon/i.test(ct)) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
+    }
+    if (len !== null && len > 0 && len < 8000) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
+    }
+    return { url, ok: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
+  } catch (e: any) {
+    return { url, ok: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
+  }
+}
 
 type ImportPayload = {
   realtorId: string;
