@@ -302,7 +302,13 @@ function ReviewCard({ card, onChange, onSave }: { card: Card; onChange: (patch: 
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
               {images.map((u, i) => (
                 <div key={u + i} className="relative aspect-[4/3] bg-muted border border-border overflow-hidden">
-                  <img src={u} className="h-full w-full object-cover" alt="Imported property gallery candidate" />
+                  <img
+                    src={`/api/image-proxy?url=${encodeURIComponent(u)}`}
+                    className="h-full w-full object-cover"
+                    alt="Imported property gallery candidate"
+                    loading="lazy"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }}
+                  />
                   <div className="absolute left-1 top-1 flex gap-1">
                     <button onClick={() => makePrimary(i)} className="bg-background/90 text-foreground text-[10px] px-1.5 py-0.5 border border-border">{i === 0 ? "Primary" : "Set primary"}</button>
                   </div>
