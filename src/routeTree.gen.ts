@@ -17,6 +17,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as SoldSlugRouteImport } from './routes/sold.$slug'
 import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
 import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
+import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
 import { Route as AdminListingsRouteImport } from './routes/admin.listings'
 import { Route as AdminImportRouteImport } from './routes/admin.import'
@@ -62,6 +63,11 @@ const ListingsSlugRoute = ListingsSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ListingsRoute,
 } as any)
+const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
+  id: '/api/image-proxy',
+  path: '/api/image-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRealtorsRoute = AdminRealtorsRouteImport.update({
   id: '/admin/realtors',
   path: '/admin/realtors',
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
   '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByTo {
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
   '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
   '/admin/realtors': typeof AdminRealtorsRoute
+  '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
   '/preview/$slug': typeof PreviewSlugRoute
   '/sold/$slug': typeof SoldSlugRoute
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/admin/import'
     | '/admin/listings'
     | '/admin/realtors'
+    | '/api/image-proxy'
     | '/listings/$slug'
     | '/preview/$slug'
     | '/sold/$slug'
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/admin/import'
     | '/admin/listings'
     | '/admin/realtors'
+    | '/api/image-proxy'
     | '/listings/$slug'
     | '/preview/$slug'
     | '/sold/$slug'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/admin/import'
     | '/admin/listings'
     | '/admin/realtors'
+    | '/api/image-proxy'
     | '/listings/$slug'
     | '/preview/$slug'
     | '/sold/$slug'
@@ -180,6 +192,7 @@ export interface RootRouteChildren {
   AdminImportRoute: typeof AdminImportRoute
   AdminListingsRoute: typeof AdminListingsRoute
   AdminRealtorsRoute: typeof AdminRealtorsRoute
+  ApiImageProxyRoute: typeof ApiImageProxyRoute
   PreviewSlugRoute: typeof PreviewSlugRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -241,6 +254,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/listings/$slug'
       preLoaderRoute: typeof ListingsSlugRouteImport
       parentRoute: typeof ListingsRoute
+    }
+    '/api/image-proxy': {
+      id: '/api/image-proxy'
+      path: '/api/image-proxy'
+      fullPath: '/api/image-proxy'
+      preLoaderRoute: typeof ApiImageProxyRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/admin/realtors': {
       id: '/admin/realtors'
@@ -304,6 +324,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminImportRoute: AdminImportRoute,
   AdminListingsRoute: AdminListingsRoute,
   AdminRealtorsRoute: AdminRealtorsRoute,
+  ApiImageProxyRoute: ApiImageProxyRoute,
   PreviewSlugRoute: PreviewSlugRoute,
   AdminIndexRoute: AdminIndexRoute,
 }

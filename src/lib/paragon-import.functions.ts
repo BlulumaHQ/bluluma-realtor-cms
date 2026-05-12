@@ -60,6 +60,17 @@ type ImageCandidate = {
   score: number;
 };
 
+type ImageCheck = {
+  url: string;
+  ok: boolean;
+  status: number | null;
+  content_type: string | null;
+  content_length: number | null;
+  width: number | null;
+  height: number | null;
+  reason: string | null;
+};
+
 type Diagnostics = {
   fetch_success: boolean;
   html_returned: boolean;
@@ -79,6 +90,7 @@ type Diagnostics = {
   gallery_images_kept: number;
   images_rejected: number;
   rejected_images: RejectedImage[];
+  image_checks: ImageCheck[];
   selectors_used: string[];
   selectors_failed: string[];
   appears_client_side_rendered: boolean;
