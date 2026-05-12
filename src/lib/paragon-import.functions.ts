@@ -931,9 +931,83 @@ export const paragonParseUrl = createServerFn({ method: "POST" })
       }
     }
 
-    if (!html) throw new Error(`Could not retrieve page content. ${diagnostics.firecrawl_error ?? "Plain fetch failed."}`);
-    return parseFromContent(html, markdown, diagnostics.final_url ?? url, diagnostics, links, structured);
+    const parsed = parseFromContent(html, markdown, diagnostics.final_url ?? url, diagnostics, links, structured);
+
+    // Image preflight: validate kept gallery URLs by fetching headers/bytes.
+    const checks = await preflightImages(parsed.image_urls, diagnostics.final_url ?? url);
+    diagnostics.image_checks = checks;
+    const goodUrls = new Set(checks.filter((c) => c.ok).map((c) => c.url));
+    const droppedByPreflight = parsed.image_urls.filter((u) => !goodUrls.has(u));
+    for (const u of droppedByPreflight) {
+      const c = checks.find((x) => x.url === u);
+      parsed.rejected_images.push({
+        url: u,
+        reason: c?.reason ?? "Image preflight failed",
+        source: "preflight",
+        context: c ? `status=${c.status ?? "?"} type=${c.content_type ?? "?"} len=${c.content_length ?? "?"}` : "no response",
+      });
+    }
+    parsed.image_urls = parsed.image_urls.filter((u) => goodUrls.has(u));
+    diagnostics.gallery_images_kept = parsed.image_urls.length;
+    diagnostics.gallery_images_detected = parsed.image_urls.length > 0;
+    diagnostics.images_rejected = parsed.rejected_images.length;
+    diagnostics.rejected_images = parsed.rejected_images;
+    if (parsed.image_urls.length === 0 && !parsed.parse_warnings.some((w) => /gallery images were detected/i.test(w))) {
+      parsed.parse_warnings.push("No property gallery images were detected. Please upload photos manually.");
+    }
+    return parsed;
   });
+
+async function preflightImages(urls: string[], referer: string): Promise<ImageCheck[]> {
+  const out: ImageCheck[] = [];
+  const limit = 6;
+  let i = 0;
+  async function worker() {
+    while (i < urls.length) {
+      const idx = i++;
+      const u = urls[idx];
+      out[idx] = await preflightOne(u, referer);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, urls.length) }, () => worker()));
+  return out;
+}
+
+async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
+  let origin = referer;
+  try { origin = new URL(url).origin; } catch { /* keep referer */ }
+  const baseHeaders = {
+    "User-Agent": "Mozilla/5.0 (compatible; BlulumaImporter/1.0)",
+    Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8",
+    Referer: origin + "/",
+  } as Record<string, string>;
+  try {
+    // Try a range GET (1KB) — many CDNs reject HEAD but support range.
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { ...baseHeaders, Range: "bytes=0-1024" },
+      redirect: "follow",
+    });
+    const ct = res.headers.get("content-type");
+    const lenStr = res.headers.get("content-length") ?? res.headers.get("content-range")?.split("/")?.[1] ?? null;
+    const len = lenStr ? Number(lenStr) : null;
+    if (!res.ok && res.status !== 206) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
+    }
+    if (!ct || !/^image\//i.test(ct)) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
+    }
+    if (/svg|gif|x-icon|vnd\.microsoft\.icon/i.test(ct)) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
+    }
+    if (len !== null && len > 0 && len < 8000) {
+      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
+    }
+    return { url, ok: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
+  } catch (e: any) {
+    return { url, ok: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
+  }
+}
 
 type ImportPayload = {
   realtorId: string;
