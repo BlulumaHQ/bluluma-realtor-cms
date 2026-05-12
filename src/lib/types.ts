@@ -46,7 +46,7 @@ export type Listing = {
   property_type: string | null;
   mls_number: string | null;
   description: string | null;
-  features: string[] | null;
+  features: any;
   paragon_url: string | null;
   pdf_url: string | null;
   primary_image_url: string | null;
