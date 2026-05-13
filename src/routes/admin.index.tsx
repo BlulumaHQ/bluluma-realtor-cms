@@ -71,7 +71,7 @@ export function Dashboard() {
             <h2 className="font-display text-2xl">Quick Import</h2>
             <Link to="/admin/import" className="text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground">Open full import →</Link>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid sm:grid-cols-1 gap-3">
             <label className="block">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Realtor</div>
               <select
@@ -83,19 +83,10 @@ export function Dashboard() {
                 {realtors.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </label>
-            <label className="block">
-              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Destination</div>
-              <select
-                className="w-full h-11 px-3 border border-border bg-background"
-                value={quickDest}
-                onChange={(e) => setQuickDest(e.target.value as any)}
-              >
-                <option value="active">Active Featured Listing</option>
-                <option value="sold">Sold Listing</option>
-                <option value="commercial">Commercial Listing</option>
-              </select>
-            </label>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Classification is detected automatically from each Paragon link (Active Residential, Sold Residential, Commercial, or Needs Review). You can override per listing after analysis.
+          </p>
           <label className="block">
             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-1">Paragon links — one per line</div>
             <textarea
