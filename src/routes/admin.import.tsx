@@ -49,7 +49,6 @@ type Item = {
   source_kind: "group" | "single";
   source_window: string;
   selected: boolean;
-  destination: "active" | "sold" | "commercial";
   updateExisting: boolean;
   importStatus: "idle" | "importing" | "imported" | "skipped" | "error";
   importError?: string;
@@ -62,10 +61,22 @@ function isImportReady(item: Item) {
   return !!item.address && !!item.mls_number && item.price != null && item.image_urls.length > 0;
 }
 
-function destFromClassification(c: Classification): "active" | "sold" | "commercial" {
+type GroupKey = "active" | "sold" | "commercial" | "needs_review";
+
+function groupOf(c: Classification): GroupKey {
   if (c === "sold") return "sold";
   if (c === "commercial_sale" || c === "commercial_lease") return "commercial";
+  if (c === "needs_review") return "needs_review";
   return "active";
+}
+
+function classificationConfidence(it: Item): "High" | "Medium" | "Low" {
+  if (it.classification === "needs_review") return "Low";
+  const src = (it.source_url ?? "").toLowerCase();
+  const hasSourceHint = /bcres|bccls/.test(src);
+  if (hasSourceHint && it.address && it.price != null) return "High";
+  if (it.address || it.price != null) return "Medium";
+  return "Low";
 }
 
 function Page() {
@@ -125,7 +136,6 @@ function Page() {
         source_kind: it.source_kind,
         source_window: it.source_window,
         selected: it.duplicate_status !== "already_posted" && isImportReady({ ...it, image_urls: it.image_urls ?? (it.image_url ? [it.image_url] : []) } as Item),
-        destination: destFromClassification(it.classification),
         updateExisting: false,
         importStatus: "idle",
       })));
@@ -245,7 +255,7 @@ function Page() {
         {error && <div className="text-destructive text-sm">{error}</div>}
         <div className="flex justify-end">
           <button onClick={onAnalyze} disabled={analyzing} className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em] disabled:opacity-50">
-            {analyzing ? "Analyzing…" : "Analyze Links"}
+            {analyzing ? "Analyzing…" : "Generate Imports"}
           </button>
         </div>
       </section>
@@ -309,7 +319,7 @@ function Page() {
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" && isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: false })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Clear</button>
-              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Import selected</button>
+              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Save selected</button>
             </div>
           </div>
           {selectedBlocked && <div className="border border-accent bg-secondary p-3 text-xs text-secondary-foreground">Needs individual listing link or manual review.</div>}
@@ -323,77 +333,85 @@ function Page() {
                   <th className="p-2">Address / MLS</th>
                   <th className="p-2 w-24">Price</th>
                   <th className="p-2 w-32">Status</th>
-                  <th className="p-2 w-36">Classification</th>
-                  <th className="p-2 w-32">Destination</th>
+                  <th className="p-2 w-44">Detected · Confidence</th>
                   <th className="p-2 w-32">Dup status</th>
                   <th className="p-2 w-28">Source</th>
                   <th className="p-2 w-40">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => (
-                  <tr key={it.rowId} className="border-t border-border align-top">
-                    <td className="p-2"><input type="checkbox" checked={it.selected} disabled={!isImportReady(it)} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
-                    <td className="p-2">
-                      {it.image_urls[0] ? (
-                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_urls[0])}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                      ) : <div className="h-12 w-16 bg-muted border border-border" />}
-                    </td>
-                    <td className="p-2">
-                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">{it.source_kind === "group" ? "Address not exposed in inspected row" : "No address detected"}</span>}</div>
-                      <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
-                      {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
-                      <div className="mt-1 text-[10px] text-muted-foreground">{it.image_urls.length} verified photos</div>
-                      {!isImportReady(it) && <div className="mt-1 text-[10px] text-accent">Needs individual listing link or manual review.</div>}
-                      {(it.property_type || it.beds || it.baths || it.sqft) && <div className="mt-1 text-[10px] text-muted-foreground">{[it.property_type, it.beds ? `${it.beds} bd` : null, it.baths ? `${it.baths} ba` : null, it.sqft ? `${it.sqft.toLocaleString()} sf` : null].filter(Boolean).join(" · ")}</div>}
-                      {it.diagnostics.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Diagnostics</summary><div className="mt-1 space-y-1 text-muted-foreground">{it.diagnostics.slice(0, 8).map((d, i) => <div key={i}>{d}</div>)}</div></details>}
-                      {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c: any, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.loaded ?? c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
-                    </td>
-                    <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
-                    <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
-                    <td className="p-2">
-                      <select className="w-full h-8 px-1 border border-border bg-background text-xs" value={it.classification} onChange={(e) => {
-                        const c = e.target.value as Classification;
-                        updateItem(it.rowId, { classification: c, destination: destFromClassification(c) });
-                      }}>
-                        <option value="active">Active</option>
-                        <option value="sold">Sold / Closed</option>
-                        <option value="commercial_sale">Commercial Sale</option>
-                        <option value="commercial_lease">Commercial Lease</option>
-                        <option value="needs_review">Needs Review</option>
-                      </select>
-                    </td>
-                    <td className="p-2">
-                      <select className="w-full h-8 px-1 border border-border bg-background text-xs" value={it.destination} onChange={(e) => updateItem(it.rowId, { destination: e.target.value as Item["destination"] })}>
-                        <option value="active">Active Featured</option>
-                        <option value="sold">Sold</option>
-                        <option value="commercial">Commercial</option>
-                      </select>
-                    </td>
-                    <td className="p-2">
-                      <DupBadge status={it.duplicate_status} />
-                      {it.duplicate_status === "already_posted" && (
-                        <label className="flex items-center gap-1 mt-1 text-[10px]">
-                          <input type="checkbox" checked={it.updateExisting} onChange={(e) => updateItem(it.rowId, { updateExisting: e.target.checked })} /> Update existing
-                        </label>
-                      )}
-                    </td>
-                    <td className="p-2">
-                      <span className={`inline-block px-1.5 py-0.5 border text-[10px] uppercase ${it.source_kind === "group" ? "border-accent text-accent" : "border-border"}`}>{it.source_kind}</span>
-                      {it.source_kind === "group" && !it.detail_url && <div className="text-[10px] text-muted-foreground mt-1">Needs manual photos</div>}
-                    </td>
-                    <td className="p-2">
-                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing" || !isImportReady(it)} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
-                        {it.importStatus === "importing" ? "Importing…" : it.importStatus === "imported" ? "Re-import" : "Import"}
-                      </button>
-                      {it.importStatus === "imported" && it.importResult && (
-                        <div className="text-[10px] text-accent mt-1">Saved · {it.importResult.images_stored} photos{it.importResult.warning ? " · needs photos" : ""}</div>
-                      )}
-                      {it.importStatus === "skipped" && <div className="text-[10px] text-muted-foreground mt-1">{it.importError}</div>}
-                      {it.importStatus === "error" && <div className="text-[10px] text-destructive mt-1 break-words">{it.importError}</div>}
-                    </td>
-                  </tr>
-                ))}
+                {(["active", "sold", "commercial", "needs_review"] as GroupKey[]).flatMap((g) => {
+                  const groupItems = items.filter((it) => groupOf(it.classification) === g);
+                  if (groupItems.length === 0) return [];
+                  const groupLabel =
+                    g === "active" ? "Active Residential Listings" :
+                    g === "sold" ? "Sold Residential Listings" :
+                    g === "commercial" ? "Commercial Listings" :
+                    "Needs Review";
+                  const header = (
+                    <tr key={`hdr-${g}`} className="bg-muted/30 border-t-2 border-border">
+                      <td colSpan={9} className="p-2 text-[11px] uppercase tracking-[0.18em] text-foreground font-medium">
+                        {groupLabel} <span className="text-muted-foreground normal-case tracking-normal ml-2">{groupItems.length} detected</span>
+                      </td>
+                    </tr>
+                  );
+                  const rows = groupItems.map((it) => (
+                    <tr key={it.rowId} className="border-t border-border align-top">
+                      <td className="p-2"><input type="checkbox" checked={it.selected} disabled={!isImportReady(it)} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
+                      <td className="p-2">
+                        {it.image_urls[0] ? (
+                          <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_urls[0])}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : <div className="h-12 w-16 bg-muted border border-border" />}
+                      </td>
+                      <td className="p-2">
+                        <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">{it.source_kind === "group" ? "Address not exposed in inspected row" : "No address detected"}</span>}</div>
+                        <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
+                        {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
+                        <div className="mt-1 text-[10px] text-muted-foreground">{it.image_urls.length} verified photos</div>
+                        {!isImportReady(it) && <div className="mt-1 text-[10px] text-accent">Needs individual listing link or manual review.</div>}
+                        {(it.property_type || it.beds || it.baths || it.sqft) && <div className="mt-1 text-[10px] text-muted-foreground">{[it.property_type, it.beds ? `${it.beds} bd` : null, it.baths ? `${it.baths} ba` : null, it.sqft ? `${it.sqft.toLocaleString()} sf` : null].filter(Boolean).join(" · ")}</div>}
+                        <div className="mt-1 text-[10px] text-muted-foreground break-all">Source: <a className="underline" href={it.source_url} target="_blank" rel="noreferrer">{it.source_url}</a></div>
+                        {it.diagnostics.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Diagnostics</summary><div className="mt-1 space-y-1 text-muted-foreground">{it.diagnostics.slice(0, 8).map((d, i) => <div key={i}>{d}</div>)}</div></details>}
+                        {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c: any, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.loaded ?? c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
+                      </td>
+                      <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
+                      <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
+                      <td className="p-2">
+                        <select className="w-full h-8 px-1 border border-border bg-background text-xs" value={it.classification} onChange={(e) => updateItem(it.rowId, { classification: e.target.value as Classification })}>
+                          <option value="active">Active Residential</option>
+                          <option value="sold">Sold Residential</option>
+                          <option value="commercial_sale">Commercial Sale</option>
+                          <option value="commercial_lease">Commercial Lease</option>
+                          <option value="needs_review">Needs Review</option>
+                        </select>
+                        <div className="mt-1 text-[10px] text-muted-foreground">Confidence: {classificationConfidence(it)}</div>
+                      </td>
+                      <td className="p-2">
+                        <DupBadge status={it.duplicate_status} />
+                        {it.duplicate_status === "already_posted" && (
+                          <label className="flex items-center gap-1 mt-1 text-[10px]">
+                            <input type="checkbox" checked={it.updateExisting} onChange={(e) => updateItem(it.rowId, { updateExisting: e.target.checked })} /> Update existing
+                          </label>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <span className={`inline-block px-1.5 py-0.5 border text-[10px] uppercase ${it.source_kind === "group" ? "border-accent text-accent" : "border-border"}`}>{it.source_kind}</span>
+                        {it.source_kind === "group" && !it.detail_url && <div className="text-[10px] text-muted-foreground mt-1">Needs manual photos</div>}
+                      </td>
+                      <td className="p-2">
+                        <button onClick={() => importOne(it)} disabled={it.importStatus === "importing" || !isImportReady(it)} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
+                          {it.importStatus === "importing" ? "Saving…" : it.importStatus === "imported" ? "Re-save" : "Save this listing"}
+                        </button>
+                        {it.importStatus === "imported" && it.importResult && (
+                          <div className="text-[10px] text-accent mt-1">Saved · {it.importResult.images_stored} photos{it.importResult.warning ? " · needs photos" : ""}</div>
+                        )}
+                        {it.importStatus === "skipped" && <div className="text-[10px] text-muted-foreground mt-1">{it.importError}</div>}
+                        {it.importStatus === "error" && <div className="text-[10px] text-destructive mt-1 break-words">{it.importError}</div>}
+                      </td>
+                    </tr>
+                  ));
+                  return [header, ...rows];
+                })}
               </tbody>
             </table>
           </div>
