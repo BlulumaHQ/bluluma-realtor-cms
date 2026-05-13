@@ -83,6 +83,7 @@ function Page() {
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const selectedBlocked = items.some((i) => i.selected && !isImportReady(i));
 
   useEffect(() => {
     if (!realtorId && realtors.length === 1 && !search.realtor) setRealtorId(realtors[0].id);
@@ -91,7 +92,7 @@ function Page() {
   const onAnalyze = async () => {
     setError(null);
     if (!realtorId) return setError("Select a realtor first.");
-    const urls = links.split("\n").map((s: string) => s.trim()).filter(Boolean);
+    const urls = links.split(/\n+/).map((url: string) => url.trim()).filter(Boolean);
     if (urls.length === 0) return setError("Paste at least one Paragon link.");
     setAnalyzing(true);
     setEntries([]);
@@ -140,6 +141,10 @@ function Page() {
   const updateItem = (rowId: string, patch: Partial<Item>) => setItems((prev) => prev.map((i) => i.rowId === rowId ? { ...i, ...patch } : i));
 
   const importOne = async (item: Item) => {
+    if (!isImportReady(item)) {
+      updateItem(item.rowId, { importStatus: "skipped", importError: "Needs individual listing link or manual review." });
+      return;
+    }
     if (item.duplicate_status === "already_posted" && !item.updateExisting) {
       updateItem(item.rowId, { importStatus: "skipped", importError: "Already posted — enable Update Existing to overwrite." });
       return;
@@ -183,6 +188,10 @@ function Page() {
   };
 
   const importSelected = async () => {
+    if (items.some((i) => i.selected && !isImportReady(i))) {
+      setError("Needs individual listing link or manual review.");
+      return;
+    }
     for (const it of items) {
       if (!it.selected) continue;
       if (it.importStatus === "imported") continue;
