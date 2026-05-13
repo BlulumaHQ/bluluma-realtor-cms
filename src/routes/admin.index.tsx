@@ -22,7 +22,6 @@ export function Dashboard() {
 
   const [selectedRealtor, setSelectedRealtor] = useState("");
   const [quickLinks, setQuickLinks] = useState("");
-  const [quickDest, setQuickDest] = useState<"active" | "sold" | "commercial">("active");
 
   const realtors = stats.data?.realtors ?? [];
   const counts = stats.data?.counts;
@@ -36,10 +35,9 @@ export function Dashboard() {
   }, [realtors]);
 
   const startImport = () => {
-    const links = quickLinks.split("\n").map((s) => s.trim()).filter(Boolean);
+    const links = quickLinks.split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const params = new URLSearchParams();
     if (selectedRealtor) params.set("realtor", selectedRealtor);
-    params.set("destination", quickDest);
     if (links.length) params.set("links", links.join("\n"));
     navigate({ to: "/admin/import", search: Object.fromEntries(params) as any });
   };
