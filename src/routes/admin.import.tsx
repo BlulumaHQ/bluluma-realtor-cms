@@ -30,8 +30,18 @@ type Item = {
   address: string | null;
   price: number | null;
   status_label: string | null;
+  property_type: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
   detail_url: string | null;
   image_url: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
+  image_checks: Array<{ url: string; ok: boolean; status: number | null; content_type: string | null; reason: string | null }>;
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
   classification: Classification;
   duplicate_status: DupStatus;
   duplicate_listing_id: string | null;
@@ -46,7 +56,11 @@ type Item = {
   importResult?: { slug: string; images_stored: number; images_failed: number; warning?: string | null; parsed_individual?: boolean; parse_error?: string | null };
 };
 
-type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null };
+type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null; diagnostics: string[]; raw_anchors: string[]; candidate_urls: string[] };
+
+function isImportReady(item: Item) {
+  return !!item.address && !!item.mls_number && item.price != null && item.image_urls.length > 0;
+}
 
 function destFromClassification(c: Classification): "active" | "sold" | "commercial" {
   if (c === "sold") return "sold";
