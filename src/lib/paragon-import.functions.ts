@@ -1139,6 +1139,12 @@ export type AnalyzedItem = {
   status_label: string | null;
   detail_url: string | null;
   image_url: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
+  image_checks: ImageCheck[];
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
   classification: "active" | "sold" | "commercial_sale" | "commercial_lease" | "needs_review";
   duplicate_status: "already_posted" | "new" | "needs_review";
   duplicate_listing_id: string | null;
@@ -1155,6 +1161,9 @@ export type AnalyzedEntry = {
   firecrawlUsed: boolean;
   finalUrl: string | null;
   error: string | null;
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
 };
 
 function isLikelyGroupUrl(url: string) {
