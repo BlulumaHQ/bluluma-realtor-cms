@@ -49,7 +49,6 @@ type Item = {
   source_kind: "group" | "single";
   source_window: string;
   selected: boolean;
-  destination: "active" | "sold" | "commercial";
   updateExisting: boolean;
   importStatus: "idle" | "importing" | "imported" | "skipped" | "error";
   importError?: string;
@@ -62,10 +61,22 @@ function isImportReady(item: Item) {
   return !!item.address && !!item.mls_number && item.price != null && item.image_urls.length > 0;
 }
 
-function destFromClassification(c: Classification): "active" | "sold" | "commercial" {
+type GroupKey = "active" | "sold" | "commercial" | "needs_review";
+
+function groupOf(c: Classification): GroupKey {
   if (c === "sold") return "sold";
   if (c === "commercial_sale" || c === "commercial_lease") return "commercial";
+  if (c === "needs_review") return "needs_review";
   return "active";
+}
+
+function classificationConfidence(it: Item): "High" | "Medium" | "Low" {
+  if (it.classification === "needs_review") return "Low";
+  const src = (it.source_url ?? "").toLowerCase();
+  const hasSourceHint = /bcres|bccls/.test(src);
+  if (hasSourceHint && it.address && it.price != null) return "High";
+  if (it.address || it.price != null) return "Medium";
+  return "Low";
 }
 
 function Page() {
