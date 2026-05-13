@@ -1137,6 +1137,10 @@ export type AnalyzedItem = {
   address: string | null;
   price: number | null;
   status_label: string | null;
+  property_type: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
   detail_url: string | null;
   image_url: string | null;
   image_urls: string[];
