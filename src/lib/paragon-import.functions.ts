@@ -1350,32 +1350,61 @@ function extractListingItems(html: string, markdown: string | null, sourceUrl: s
 export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
   .inputValidator((d: { realtorId: string; urls: string[] }) => d)
   .handler(async ({ data }) => {
-    const cleaned = Array.from(new Set(data.urls.map((u) => u.trim()).filter(Boolean)));
+    const cleaned = Array.from(new Set(data.urls.flatMap((u) => String(u).split(/\n+/)).map((u) => u.trim()).filter(Boolean)));
     const entries: AnalyzedEntry[] = [];
 
     for (const url of cleaned) {
-      const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null };
+      const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null, diagnostics: [], raw_anchors: [], candidate_urls: [] };
       try {
         const fc = await firecrawlScrape(url);
         entry.firecrawlUsed = true;
         entry.finalUrl = fc.finalUrl;
         const html = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
+        const sourceUrl = fc.finalUrl ?? url;
+        entry.raw_anchors = extractRawAnchors(html, sourceUrl, fc.links);
+        entry.candidate_urls = extractCandidateUrls(html, sourceUrl, fc.links);
         let items = extractListingItems(html, fc.markdown, fc.finalUrl ?? url, fc.links);
-        if (items.length >= 2) entry.kind = "group";
-        else if (items.length === 1) entry.kind = "single";
-        else entry.kind = isLikelyGroupUrl(url) ? "group" : "single";
+        entry.kind = isLikelyGroupUrl(url) || items.length >= 2 ? "group" : "single";
 
         if (items.length === 0) {
-          // synthetic single item — let import call full parser
-          items = [{
-            mls_number: null, address: null, price: null, status_label: null,
-            detail_url: url, image_url: null, classification: "needs_review",
-            duplicate_status: "new", duplicate_listing_id: null,
-            source_url: url, source_kind: "single", source_window: "",
-          }];
+          if (entry.kind === "group") {
+            entry.diagnostics.push("Group report only — individual gallery not available");
+            entry.diagnostics.push("Individual listing links not found");
+          } else {
+            items = [makeAnalyzedItem({
+              detail_url: url,
+              source_url: url,
+              source_kind: "single",
+              source_window: "Individual Paragon detail link",
+              classification: "needs_review",
+            })];
+          }
         }
         for (const it of items) {
           it.source_kind = entry.kind === "group" ? "group" : "single";
+          it.raw_anchors = entry.raw_anchors;
+          it.candidate_urls = entry.candidate_urls;
+          if (entry.kind === "group" && !it.detail_url && !it.diagnostics.includes("Individual listing links not found")) it.diagnostics.push("Individual listing links not found");
+          if (entry.kind === "group" && !it.detail_url && !entry.diagnostics.includes("Individual listing links not found")) entry.diagnostics.push("Individual listing links not found");
+          if (it.detail_url) {
+            try {
+              const parsed: Parsed = await (paragonParseUrl as any)({ data: { url: it.detail_url } });
+              it.address = parsed.address ?? it.address;
+              it.price = parsed.price ?? it.price;
+              it.mls_number = parsed.mls_number ?? it.mls_number;
+              it.status_label = parsed.status ?? it.status_label;
+              it.property_type = parsed.property_type ?? it.property_type;
+              it.beds = parsed.beds ?? it.beds;
+              it.baths = parsed.baths ?? it.baths;
+              it.sqft = parsed.sqft ?? it.sqft;
+              it.image_urls = parsed.image_urls;
+              it.image_url = parsed.image_urls[0] ?? it.thumbnail_url ?? it.image_url;
+              it.image_checks = parsed.diagnostics.image_checks;
+              it.diagnostics.push(...parsed.parse_warnings, `Gallery images kept: ${parsed.image_urls.length}`);
+            } catch (detailError: any) {
+              it.diagnostics.push(`Detail parse failed: ${detailError?.message ?? String(detailError)}`);
+            }
+          }
           it.classification = classifyItem(it, fc.markdown ?? "", html);
         }
         entry.items = items;
