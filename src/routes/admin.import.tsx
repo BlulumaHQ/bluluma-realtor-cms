@@ -30,8 +30,18 @@ type Item = {
   address: string | null;
   price: number | null;
   status_label: string | null;
+  property_type: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
   detail_url: string | null;
   image_url: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
+  image_checks: Array<{ url: string; ok: boolean; status: number | null; content_type: string | null; reason: string | null }>;
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
   classification: Classification;
   duplicate_status: DupStatus;
   duplicate_listing_id: string | null;
@@ -46,7 +56,11 @@ type Item = {
   importResult?: { slug: string; images_stored: number; images_failed: number; warning?: string | null; parsed_individual?: boolean; parse_error?: string | null };
 };
 
-type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null };
+type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null; diagnostics: string[]; raw_anchors: string[]; candidate_urls: string[] };
+
+function isImportReady(item: Item) {
+  return !!item.address && !!item.mls_number && item.price != null && item.image_urls.length > 0;
+}
 
 function destFromClassification(c: Classification): "active" | "sold" | "commercial" {
   if (c === "sold") return "sold";
@@ -69,6 +83,7 @@ function Page() {
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const selectedBlocked = items.some((i) => i.selected && !isImportReady(i));
 
   useEffect(() => {
     if (!realtorId && realtors.length === 1 && !search.realtor) setRealtorId(realtors[0].id);
@@ -77,29 +92,39 @@ function Page() {
   const onAnalyze = async () => {
     setError(null);
     if (!realtorId) return setError("Select a realtor first.");
-    const urls = links.split("\n").map((s: string) => s.trim()).filter(Boolean);
+    const urls = links.split(/\n+/).map((url: string) => url.trim()).filter(Boolean);
     if (urls.length === 0) return setError("Paste at least one Paragon link.");
     setAnalyzing(true);
     setEntries([]);
     setItems([]);
     try {
       const res = await analyzeFn({ data: { realtorId, urls } });
-      const newEntries: Entry[] = res.entries.map((e: any) => ({ url: e.url, kind: e.kind, itemCount: e.itemCount, firecrawlUsed: e.firecrawlUsed, finalUrl: e.finalUrl, error: e.error }));
+      const newEntries: Entry[] = res.entries.map((e: any) => ({ url: e.url, kind: e.kind, itemCount: e.itemCount, firecrawlUsed: e.firecrawlUsed, finalUrl: e.finalUrl, error: e.error, diagnostics: e.diagnostics ?? [], raw_anchors: e.raw_anchors ?? [], candidate_urls: e.candidate_urls ?? [] }));
       const newItems: Item[] = res.entries.flatMap((e: any) => e.items.map((it: any, idx: number) => ({
         rowId: `${e.url}-${it.mls_number ?? idx}-${idx}`,
         mls_number: it.mls_number,
         address: it.address,
         price: it.price,
         status_label: it.status_label,
+        property_type: it.property_type,
+        beds: it.beds,
+        baths: it.baths,
+        sqft: it.sqft,
         detail_url: it.detail_url,
         image_url: it.image_url,
+        image_urls: it.image_urls ?? (it.image_url ? [it.image_url] : []),
+        thumbnail_url: it.thumbnail_url,
+        image_checks: it.image_checks ?? [],
+        diagnostics: it.diagnostics ?? [],
+        raw_anchors: it.raw_anchors ?? e.raw_anchors ?? [],
+        candidate_urls: it.candidate_urls ?? e.candidate_urls ?? [],
         classification: it.classification,
         duplicate_status: it.duplicate_status,
         duplicate_listing_id: it.duplicate_listing_id,
         source_url: it.source_url,
         source_kind: it.source_kind,
         source_window: it.source_window,
-        selected: it.duplicate_status !== "already_posted",
+        selected: it.duplicate_status !== "already_posted" && isImportReady({ ...it, image_urls: it.image_urls ?? (it.image_url ? [it.image_url] : []) } as Item),
         destination: destFromClassification(it.classification),
         updateExisting: false,
         importStatus: "idle",
@@ -116,6 +141,10 @@ function Page() {
   const updateItem = (rowId: string, patch: Partial<Item>) => setItems((prev) => prev.map((i) => i.rowId === rowId ? { ...i, ...patch } : i));
 
   const importOne = async (item: Item) => {
+    if (!isImportReady(item)) {
+      updateItem(item.rowId, { importStatus: "skipped", importError: "Needs individual listing link or manual review." });
+      return;
+    }
     if (item.duplicate_status === "already_posted" && !item.updateExisting) {
       updateItem(item.rowId, { importStatus: "skipped", importError: "Already posted — enable Update Existing to overwrite." });
       return;
@@ -130,8 +159,18 @@ function Page() {
             address: item.address,
             price: item.price,
             status_label: item.status_label,
+            property_type: item.property_type,
+            beds: item.beds,
+            baths: item.baths,
+            sqft: item.sqft,
             detail_url: item.detail_url,
             image_url: item.image_url,
+            image_urls: item.image_urls,
+            thumbnail_url: item.thumbnail_url,
+            image_checks: item.image_checks as any,
+            diagnostics: item.diagnostics,
+            raw_anchors: item.raw_anchors,
+            candidate_urls: item.candidate_urls,
             classification: item.classification,
             duplicate_status: item.duplicate_status,
             duplicate_listing_id: item.duplicate_listing_id,
@@ -149,6 +188,10 @@ function Page() {
   };
 
   const importSelected = async () => {
+    if (items.some((i) => i.selected && !isImportReady(i))) {
+      setError("Needs individual listing link or manual review.");
+      return;
+    }
     for (const it of items) {
       if (!it.selected) continue;
       if (it.importStatus === "imported") continue;
@@ -227,11 +270,23 @@ function Page() {
               </tr></thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={e.url} className="border-t border-border">
+                  <tr key={e.url} className="border-t border-border align-top">
                     <td className="py-2 pr-4 font-mono break-all">{e.url}</td>
                     <td className="py-2 pr-4">{e.kind}</td>
                     <td className="py-2 pr-4">{e.itemCount}</td>
-                    <td className="py-2 pr-4 font-mono break-all">{e.finalUrl ?? "—"}</td>
+                    <td className="py-2 pr-4 font-mono break-all">
+                      {e.finalUrl ?? "—"}
+                      {(e.diagnostics.length > 0 || e.raw_anchors.length > 0 || e.candidate_urls.length > 0) && (
+                        <details className="mt-2 font-sans text-[10px] text-muted-foreground">
+                          <summary className="cursor-pointer">Source diagnostics</summary>
+                          {e.diagnostics.map((d, i) => <div key={`d-${i}`} className="mt-1 text-accent">{d}</div>)}
+                          {e.raw_anchors.length > 0 && <div className="mt-2 font-medium">Raw anchors / hrefs</div>}
+                          {e.raw_anchors.slice(0, 20).map((u, i) => <div key={`a-${i}`} className="font-mono break-all">{u}</div>)}
+                          {e.candidate_urls.length > 0 && <div className="mt-2 font-medium">Candidate URLs found</div>}
+                          {e.candidate_urls.slice(0, 20).map((u, i) => <div key={`c-${i}`} className="font-mono break-all">{u}</div>)}
+                        </details>
+                      )}
+                    </td>
                     <td className="py-2 text-destructive">{e.error ?? ""}</td>
                   </tr>
                 ))}
@@ -251,12 +306,13 @@ function Page() {
               <div className="text-xs text-muted-foreground mt-1">{totals.newCount} new · {totals.dup} already posted · {totals.sel} selected</div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
-              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: true })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" && isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: false })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Clear</button>
-              <button onClick={importSelected} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em]">Import selected</button>
+              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Import selected</button>
             </div>
           </div>
+          {selectedBlocked && <div className="border border-accent bg-secondary p-3 text-xs text-secondary-foreground">Needs individual listing link or manual review.</div>}
 
           <div className="overflow-auto border border-border">
             <table className="w-full text-xs">
@@ -277,16 +333,21 @@ function Page() {
               <tbody>
                 {items.map((it) => (
                   <tr key={it.rowId} className="border-t border-border align-top">
-                    <td className="p-2"><input type="checkbox" checked={it.selected} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
+                    <td className="p-2"><input type="checkbox" checked={it.selected} disabled={!isImportReady(it)} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
                     <td className="p-2">
-                      {it.image_url ? (
-                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_url)}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }} />
+                      {it.image_urls[0] ? (
+                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_urls[0])}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                       ) : <div className="h-12 w-16 bg-muted border border-border" />}
                     </td>
                     <td className="p-2">
-                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">No address detected</span>}</div>
+                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">{it.source_kind === "group" ? "Address not exposed in inspected row" : "No address detected"}</span>}</div>
                       <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
                       {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
+                      <div className="mt-1 text-[10px] text-muted-foreground">{it.image_urls.length} verified photos</div>
+                      {!isImportReady(it) && <div className="mt-1 text-[10px] text-accent">Needs individual listing link or manual review.</div>}
+                      {(it.property_type || it.beds || it.baths || it.sqft) && <div className="mt-1 text-[10px] text-muted-foreground">{[it.property_type, it.beds ? `${it.beds} bd` : null, it.baths ? `${it.baths} ba` : null, it.sqft ? `${it.sqft.toLocaleString()} sf` : null].filter(Boolean).join(" · ")}</div>}
+                      {it.diagnostics.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Diagnostics</summary><div className="mt-1 space-y-1 text-muted-foreground">{it.diagnostics.slice(0, 8).map((d, i) => <div key={i}>{d}</div>)}</div></details>}
+                      {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c: any, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.loaded ?? c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
                     </td>
                     <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
                     <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
@@ -322,7 +383,7 @@ function Page() {
                       {it.source_kind === "group" && !it.detail_url && <div className="text-[10px] text-muted-foreground mt-1">Needs manual photos</div>}
                     </td>
                     <td className="p-2">
-                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing"} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
+                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing" || !isImportReady(it)} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
                         {it.importStatus === "importing" ? "Importing…" : it.importStatus === "imported" ? "Re-import" : "Import"}
                       </button>
                       {it.importStatus === "imported" && it.importResult && (

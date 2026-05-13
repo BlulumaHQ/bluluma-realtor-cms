@@ -63,6 +63,7 @@ type ImageCandidate = {
 type ImageCheck = {
   url: string;
   ok: boolean;
+  loaded: boolean;
   status: number | null;
   content_type: string | null;
   content_length: number | null;
@@ -178,9 +179,9 @@ function isGenericTitle(title: string | null | undefined) {
 
 function parseMoney(value: string | null | undefined): number | null {
   if (!value) return null;
-  const m = String(value).match(/\$?\s*([0-9][0-9,]{3,})(?:\.\d{2})?/);
+  const m = String(value).match(/\$\s*([0-9][0-9,]*)(?:\.\d{2})?|\b([0-9][0-9,]{3,})(?:\.\d{2})?\b/);
   if (!m) return null;
-  const n = Number(m[1].replace(/,/g, ""));
+  const n = Number((m[1] ?? m[2]).replace(/,/g, ""));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -993,20 +994,20 @@ async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
     const lenStr = res.headers.get("content-length") ?? res.headers.get("content-range")?.split("/")?.[1] ?? null;
     const len = lenStr ? Number(lenStr) : null;
     if (!res.ok && res.status !== 206) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
     }
     if (!ct || !/^image\//i.test(ct)) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
     }
     if (/svg|gif|x-icon|vnd\.microsoft\.icon/i.test(ct)) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
     }
     if (len !== null && len > 0 && len < 8000) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
     }
-    return { url, ok: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
+    return { url, ok: true, loaded: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
   } catch (e: any) {
-    return { url, ok: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
+    return { url, ok: false, loaded: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
   }
 }
 
@@ -1137,8 +1138,18 @@ export type AnalyzedItem = {
   address: string | null;
   price: number | null;
   status_label: string | null;
+  property_type: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
   detail_url: string | null;
   image_url: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
+  image_checks: ImageCheck[];
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
   classification: "active" | "sold" | "commercial_sale" | "commercial_lease" | "needs_review";
   duplicate_status: "already_posted" | "new" | "needs_review";
   duplicate_listing_id: string | null;
@@ -1155,6 +1166,9 @@ export type AnalyzedEntry = {
   firecrawlUsed: boolean;
   finalUrl: string | null;
   error: string | null;
+  diagnostics: string[];
+  raw_anchors: string[];
+  candidate_urls: string[];
 };
 
 function isLikelyGroupUrl(url: string) {
@@ -1208,74 +1222,201 @@ function findNearbyDetailLink(html: string, anchor: string, sourceUrl: string, l
   return null;
 }
 
+function extractRawAnchors(html: string, sourceUrl: string, links: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const abs = absoluteUrl(raw, sourceUrl) ?? raw;
+    if (!/^https?:\/\//i.test(abs)) return;
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    out.push(abs);
+  };
+  for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi)) add(m[1]);
+  for (const l of links) add(l);
+  return out.slice(0, 200);
+}
+
+function extractCandidateUrls(html: string, sourceUrl: string, links: string[]) {
+  const urls = new Set<string>();
+  for (const a of extractRawAnchors(html, sourceUrl, links)) urls.add(a);
+  for (const c of collectImageCandidates(html, sourceUrl, [], links, [])) urls.add(c.url);
+  return Array.from(urls).slice(0, 240);
+}
+
+function isLikelyDetailUrl(url: string) {
+  return /(LinkID|ListingID|MLS|MLSNumber|Listing\.aspx|PropertyDetail|ListingDetail|Property\/|Listing\/|listing|property|details?|view)/i.test(url) && !/\.(pdf|jpg|jpeg|png|webp|gif|css|js|svg|ico)(?:[?#]|$)/i.test(url);
+}
+
+function normalizeMls(value: string | null) {
+  const m = value?.match(/(?:MLS\s*(?:#|No\.?|Number|ID)?\s*[:\-]?\s*)?([A-Z]?\d{5,10}[A-Z0-9]?)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function extractAddress(text: string) {
+  const m = text.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'\/-]{4,110}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir|Parkway|Pkwy|Route|Rte)\b[^\n|,;]*/i);
+  return m ? compact(m[0]) : null;
+}
+
+function extractDetailLinkFromWindow(windowHtml: string, sourceUrl: string, links: string[], mls: string | null, address: string | null) {
+  const hrefs = [...windowHtml.matchAll(/href=["']([^"']+)["']/gi)].map((m) => absoluteUrl(m[1], sourceUrl)).filter((u): u is string => !!u);
+  const needles = [mls, address?.split(/\s+/).slice(0, 3).join(" ")].filter((x): x is string => !!x).map((x) => x.toUpperCase());
+  for (const href of hrefs) if (isLikelyDetailUrl(href)) return href;
+  for (const href of links) {
+    if (!isLikelyDetailUrl(href)) continue;
+    const upper = href.toUpperCase();
+    if (needles.length === 0 || needles.some((n) => upper.includes(n.replace(/\s+/g, "%20")) || upper.includes(n.replace(/\s+/g, "+")) || upper.includes(n))) return href;
+  }
+  return null;
+}
+
+function makeAnalyzedItem(partial: Partial<AnalyzedItem> & Pick<AnalyzedItem, "source_url" | "source_kind" | "source_window">): AnalyzedItem {
+  const imageUrls = partial.image_urls ?? (partial.image_url ? [partial.image_url] : []);
+  return {
+    mls_number: partial.mls_number ?? null,
+    address: partial.address ?? null,
+    price: partial.price ?? null,
+    status_label: partial.status_label ?? null,
+    property_type: partial.property_type ?? null,
+    beds: partial.beds ?? null,
+    baths: partial.baths ?? null,
+    sqft: partial.sqft ?? null,
+    detail_url: partial.detail_url ?? null,
+    image_url: partial.image_url ?? imageUrls[0] ?? null,
+    image_urls: imageUrls,
+    thumbnail_url: partial.thumbnail_url ?? null,
+    image_checks: partial.image_checks ?? [],
+    diagnostics: partial.diagnostics ?? [],
+    raw_anchors: partial.raw_anchors ?? [],
+    candidate_urls: partial.candidate_urls ?? [],
+    classification: partial.classification ?? "active",
+    duplicate_status: partial.duplicate_status ?? "new",
+    duplicate_listing_id: partial.duplicate_listing_id ?? null,
+    source_url: partial.source_url,
+    source_kind: partial.source_kind,
+    source_window: partial.source_window,
+  };
+}
+
 function extractListingItems(html: string, markdown: string | null, sourceUrl: string, links: string[]): AnalyzedItem[] {
   const items: AnalyzedItem[] = [];
-  const seenMls = new Set<string>();
+  const seen = new Set<string>();
+  const addFromWindow = (windowHtml: string, source: string) => {
+    const winText = compact(stripTags(windowHtml));
+    if (!/(MLS|\$\s?[\d,]{4,}|\b\d{1,6}\s+[A-Z0-9])/i.test(winText)) return;
+    const mls = normalizeMls(winText);
+    const address = extractAddress(winText);
+    const price = parseMoney(winText.match(/\$\s?[\d,]{3,}(?:\.\d{2})?(?:\s*\/\s*(?:mo|month|sf|sq\s*ft))?/i)?.[0] ?? null);
+    const status_label = winText.match(/\b(Active|Sold|Closed|Pending|Expired|Withdrawn|For\s+Lease|For\s+Sale|Leased|New|Available)\b/i)?.[0] ?? null;
+    const property_type = winText.match(/\b(Detached|Apartment|Condo|Townhouse|Townhome|Duplex|Commercial|Industrial|Office|Retail|Warehouse|Land|Business)\b/i)?.[0] ?? null;
+    const beds = parseNumber(winText.match(/(\d+(?:\.\d+)?)\s*(?:bed|bd|bedroom)/i)?.[0]);
+    const baths = parseNumber(winText.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[0]);
+    const sqft = parseInteger(winText.match(/[\d,]{3,}\s*(?:sq\.?\s*ft|sqft|square feet)/i)?.[0]);
+    const detail_url = extractDetailLinkFromWindow(windowHtml, sourceUrl, links, mls, address);
+    const thumbCandidates = collectImageCandidates(windowHtml, sourceUrl, [], [], []);
+    const thumbFiltered = filterPropertyImages(thumbCandidates).kept;
+    const thumbnail_url = thumbFiltered[0] ?? (mls ? findNearbyImage(html, mls, sourceUrl) : null);
+    const key = mls ?? `${address ?? ""}|${price ?? ""}|${detail_url ?? ""}`;
+    if ((!mls && !address && price == null && !detail_url) || seen.has(key)) return;
+    seen.add(key);
+    items.push(makeAnalyzedItem({
+      mls_number: mls,
+      address,
+      price,
+      status_label: status_label ? compact(status_label) : null,
+      property_type: property_type ? compact(property_type) : null,
+      beds,
+      baths,
+      sqft,
+      detail_url,
+      image_url: thumbnail_url,
+      thumbnail_url,
+      source_url: sourceUrl,
+      source_kind: "group",
+      source_window: `${source}: ${winText}`.slice(0, 500),
+      diagnostics: detail_url ? [] : ["Individual listing links not found"],
+    }));
+  };
+
+  for (const m of html.matchAll(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi)) addFromWindow(m[0], "report table row");
+  for (const m of html.matchAll(/<(?:article|li|section|div)\b[^>]*(?:listing|property|result|card|report|row)[^>]*>[\s\S]{80,5000}?<\/(?:article|li|section|div)>/gi)) addFromWindow(m[0], "listing card");
+
   const md = markdown ?? stripTags(html);
   const mlsRe = /MLS\s*(?:#|No\.?|Number|ID)?\s*[:\-]?\s*([A-Z]?\d{5,10}[A-Z0-9]?)/gi;
   let m;
-  while ((m = mlsRe.exec(md))) {
-    const mls = m[1].toUpperCase();
-    if (seenMls.has(mls)) continue;
-    seenMls.add(mls);
-    const start = Math.max(0, m.index - 500);
-    const end = Math.min(md.length, m.index + 500);
-    const win = md.slice(start, end);
-    const priceMatch = win.match(/\$\s?([\d,]{3,})(?:\s*(?:\/\s*(?:mo|month|sf|sq\s*ft))?)?/i);
-    const price = priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : null;
-    const addressMatch = win.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'-]{4,90}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir)\b[^\n,|]*/i);
-    const address = addressMatch ? compact(addressMatch[0]) : null;
-    const statusMatch = win.match(/\b(Active|Sold|Closed|Pending|Expired|Withdrawn|For\s+Lease|For\s+Sale|Leased|New)\b/i);
-    const status_label = statusMatch ? compact(statusMatch[0]) : null;
-    const detail_url = findNearbyDetailLink(html, mls, sourceUrl, links);
-    const image_url = findNearbyImage(html, mls, sourceUrl);
-    items.push({
-      mls_number: mls,
-      address,
-      price: Number.isFinite(price) ? price : null,
-      status_label,
-      detail_url,
-      image_url,
-      classification: "active",
-      duplicate_status: "new",
-      duplicate_listing_id: null,
-      source_url: sourceUrl,
-      source_kind: "group",
-      source_window: compact(win).slice(0, 280),
-    });
-  }
+  while ((m = mlsRe.exec(md))) addFromWindow(md.slice(Math.max(0, m.index - 700), Math.min(md.length, m.index + 700)), "rendered text MLS window");
   return items;
 }
 
 export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
   .inputValidator((d: { realtorId: string; urls: string[] }) => d)
   .handler(async ({ data }) => {
-    const cleaned = Array.from(new Set(data.urls.map((u) => u.trim()).filter(Boolean)));
+    const cleaned = Array.from(new Set(data.urls.flatMap((u) => String(u).split(/\n+/)).map((u) => u.trim()).filter(Boolean)));
     const entries: AnalyzedEntry[] = [];
 
     for (const url of cleaned) {
-      const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null };
+      const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null, diagnostics: [], raw_anchors: [], candidate_urls: [] };
       try {
         const fc = await firecrawlScrape(url);
         entry.firecrawlUsed = true;
         entry.finalUrl = fc.finalUrl;
         const html = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
+        const sourceUrl = fc.finalUrl ?? url;
+        entry.raw_anchors = extractRawAnchors(html, sourceUrl, fc.links);
+        entry.candidate_urls = extractCandidateUrls(html, sourceUrl, fc.links);
         let items = extractListingItems(html, fc.markdown, fc.finalUrl ?? url, fc.links);
-        if (items.length >= 2) entry.kind = "group";
-        else if (items.length === 1) entry.kind = "single";
-        else entry.kind = isLikelyGroupUrl(url) ? "group" : "single";
+        entry.kind = isLikelyGroupUrl(url) || items.length >= 2 ? "group" : "single";
 
         if (items.length === 0) {
-          // synthetic single item — let import call full parser
-          items = [{
-            mls_number: null, address: null, price: null, status_label: null,
-            detail_url: url, image_url: null, classification: "needs_review",
-            duplicate_status: "new", duplicate_listing_id: null,
-            source_url: url, source_kind: "single", source_window: "",
-          }];
+          const detailUrls = entry.kind === "group" ? entry.raw_anchors.filter(isLikelyDetailUrl).slice(0, 25) : [];
+          if (detailUrls.length > 0) {
+            items = detailUrls.map((detailUrl, index) => makeAnalyzedItem({
+              detail_url: detailUrl,
+              source_url: sourceUrl,
+              source_kind: "group",
+              source_window: `Detail link found in group report #${index + 1}`,
+              diagnostics: ["Listing row data came from individual detail link because the group report table was limited."],
+            }));
+          } else if (entry.kind === "group") {
+            entry.diagnostics.push("Group report only — individual gallery not available");
+            entry.diagnostics.push("Individual listing links not found");
+          } else {
+            items = [makeAnalyzedItem({
+              detail_url: url,
+              source_url: url,
+              source_kind: "single",
+              source_window: "Individual Paragon detail link",
+              classification: "needs_review",
+            })];
+          }
         }
         for (const it of items) {
           it.source_kind = entry.kind === "group" ? "group" : "single";
+          if (entry.kind === "single" && !it.detail_url) it.detail_url = sourceUrl;
+          it.raw_anchors = entry.raw_anchors;
+          it.candidate_urls = entry.candidate_urls;
+          if (entry.kind === "group" && !it.detail_url && !it.diagnostics.includes("Individual listing links not found")) it.diagnostics.push("Individual listing links not found");
+          if (entry.kind === "group" && !it.detail_url && !entry.diagnostics.includes("Individual listing links not found")) entry.diagnostics.push("Individual listing links not found");
+          if (it.detail_url) {
+            try {
+              const parsed: Parsed = await (paragonParseUrl as any)({ data: { url: it.detail_url } });
+              it.address = parsed.address ?? it.address;
+              it.price = parsed.price ?? it.price;
+              it.mls_number = parsed.mls_number ?? it.mls_number;
+              it.status_label = parsed.status ?? it.status_label;
+              it.property_type = parsed.property_type ?? it.property_type;
+              it.beds = parsed.beds ?? it.beds;
+              it.baths = parsed.baths ?? it.baths;
+              it.sqft = parsed.sqft ?? it.sqft;
+              it.image_urls = parsed.image_urls;
+              it.image_url = parsed.image_urls[0] ?? it.thumbnail_url ?? it.image_url;
+              it.image_checks = parsed.diagnostics.image_checks;
+              it.diagnostics.push(...parsed.parse_warnings, `Gallery images kept: ${parsed.image_urls.length}`);
+              it.diagnostics.push(...parsed.diagnostics.rejected_images.slice(0, 25).map((img) => `Rejected image: ${img.reason} — ${img.url}`));
+            } catch (detailError: any) {
+              it.diagnostics.push(`Detail parse failed: ${detailError?.message ?? String(detailError)}`);
+            }
+          }
           it.classification = classifyItem(it, fc.markdown ?? "", html);
         }
         entry.items = items;
@@ -1390,10 +1531,20 @@ export const paragonImportItem = createServerFn({ method: "POST" })
           category: dest === "commercial" ? "commercial" : "residential",
           transaction_type,
           mls_number: item.mls_number,
+          property_type: item.property_type,
+          beds: item.beds,
+          baths: item.baths,
+          sqft: item.sqft,
           features: baseFeatures,
         };
 
-    const imageUrls = parsed?.image_urls ?? [];
+    const imageUrls = parsed?.image_urls?.length ? parsed.image_urls : item.image_urls;
+    const finalAddress = parsed?.address ?? item.address;
+    const finalMls = parsed?.mls_number ?? item.mls_number;
+    const finalPrice = parsed?.price ?? item.price;
+    if (!finalAddress || !finalMls || finalPrice == null || imageUrls.length === 0) {
+      throw new Error("Needs individual listing link or manual review.");
+    }
 
     const result = await (paragonImportListing as any)({
       data: {
