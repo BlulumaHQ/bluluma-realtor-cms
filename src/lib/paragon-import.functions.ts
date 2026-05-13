@@ -1221,6 +1221,82 @@ function findNearbyDetailLink(html: string, anchor: string, sourceUrl: string, l
   return null;
 }
 
+function extractRawAnchors(html: string, sourceUrl: string, links: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string) => {
+    const abs = absoluteUrl(raw, sourceUrl) ?? raw;
+    if (!/^https?:\/\//i.test(abs)) return;
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    out.push(abs);
+  };
+  for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi)) add(m[1]);
+  for (const l of links) add(l);
+  return out.slice(0, 200);
+}
+
+function extractCandidateUrls(html: string, sourceUrl: string, links: string[]) {
+  const urls = new Set<string>();
+  for (const a of extractRawAnchors(html, sourceUrl, links)) urls.add(a);
+  for (const c of collectImageCandidates(html, sourceUrl, [], links, [])) urls.add(c.url);
+  return Array.from(urls).slice(0, 240);
+}
+
+function isLikelyDetailUrl(url: string) {
+  return /(LinkID|ListingID|MLS|MLSNumber|Listing\.aspx|PropertyDetail|ListingDetail|Property\/|Listing\/|listing|property|details?|view)/i.test(url) && !/\.(pdf|jpg|jpeg|png|webp|gif|css|js|svg|ico)(?:[?#]|$)/i.test(url);
+}
+
+function normalizeMls(value: string | null) {
+  const m = value?.match(/(?:MLS\s*(?:#|No\.?|Number|ID)?\s*[:\-]?\s*)?([A-Z]?\d{5,10}[A-Z0-9]?)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function extractAddress(text: string) {
+  const m = text.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'\/-]{4,110}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir|Parkway|Pkwy|Route|Rte)\b[^\n|,;]*/i);
+  return m ? compact(m[0]) : null;
+}
+
+function extractDetailLinkFromWindow(windowHtml: string, sourceUrl: string, links: string[], mls: string | null, address: string | null) {
+  const hrefs = [...windowHtml.matchAll(/href=["']([^"']+)["']/gi)].map((m) => absoluteUrl(m[1], sourceUrl)).filter((u): u is string => !!u);
+  const needles = [mls, address?.split(/\s+/).slice(0, 3).join(" ")].filter((x): x is string => !!x).map((x) => x.toUpperCase());
+  for (const href of hrefs) if (isLikelyDetailUrl(href)) return href;
+  for (const href of links) {
+    if (!isLikelyDetailUrl(href)) continue;
+    const upper = href.toUpperCase();
+    if (needles.length === 0 || needles.some((n) => upper.includes(n.replace(/\s+/g, "%20")) || upper.includes(n.replace(/\s+/g, "+")) || upper.includes(n))) return href;
+  }
+  return null;
+}
+
+function makeAnalyzedItem(partial: Partial<AnalyzedItem> & Pick<AnalyzedItem, "source_url" | "source_kind" | "source_window">): AnalyzedItem {
+  const imageUrls = partial.image_urls ?? (partial.image_url ? [partial.image_url] : []);
+  return {
+    mls_number: partial.mls_number ?? null,
+    address: partial.address ?? null,
+    price: partial.price ?? null,
+    status_label: partial.status_label ?? null,
+    property_type: partial.property_type ?? null,
+    beds: partial.beds ?? null,
+    baths: partial.baths ?? null,
+    sqft: partial.sqft ?? null,
+    detail_url: partial.detail_url ?? null,
+    image_url: partial.image_url ?? imageUrls[0] ?? null,
+    image_urls: imageUrls,
+    thumbnail_url: partial.thumbnail_url ?? null,
+    image_checks: partial.image_checks ?? [],
+    diagnostics: partial.diagnostics ?? [],
+    raw_anchors: partial.raw_anchors ?? [],
+    candidate_urls: partial.candidate_urls ?? [],
+    classification: partial.classification ?? "active",
+    duplicate_status: partial.duplicate_status ?? "new",
+    duplicate_listing_id: partial.duplicate_listing_id ?? null,
+    source_url: partial.source_url,
+    source_kind: partial.source_kind,
+    source_window: partial.source_window,
+  };
+}
+
 function extractListingItems(html: string, markdown: string | null, sourceUrl: string, links: string[]): AnalyzedItem[] {
   const items: AnalyzedItem[] = [];
   const seenMls = new Set<string>();
