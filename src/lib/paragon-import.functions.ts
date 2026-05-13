@@ -1299,40 +1299,51 @@ function makeAnalyzedItem(partial: Partial<AnalyzedItem> & Pick<AnalyzedItem, "s
 
 function extractListingItems(html: string, markdown: string | null, sourceUrl: string, links: string[]): AnalyzedItem[] {
   const items: AnalyzedItem[] = [];
-  const seenMls = new Set<string>();
+  const seen = new Set<string>();
+  const addFromWindow = (windowHtml: string, source: string) => {
+    const winText = compact(stripTags(windowHtml));
+    if (!/(MLS|\$\s?[\d,]{4,}|\b\d{1,6}\s+[A-Z0-9])/i.test(winText)) return;
+    const mls = normalizeMls(winText);
+    const address = extractAddress(winText);
+    const price = parseMoney(winText.match(/\$\s?[\d,]{3,}(?:\.\d{2})?(?:\s*\/\s*(?:mo|month|sf|sq\s*ft))?/i)?.[0] ?? null);
+    const status_label = winText.match(/\b(Active|Sold|Closed|Pending|Expired|Withdrawn|For\s+Lease|For\s+Sale|Leased|New|Available)\b/i)?.[0] ?? null;
+    const property_type = winText.match(/\b(Detached|Apartment|Condo|Townhouse|Townhome|Duplex|Commercial|Industrial|Office|Retail|Warehouse|Land|Business)\b/i)?.[0] ?? null;
+    const beds = parseNumber(winText.match(/(\d+(?:\.\d+)?)\s*(?:bed|bd|bedroom)/i)?.[0]);
+    const baths = parseNumber(winText.match(/(\d+(?:\.\d+)?)\s*(?:bath|ba|bathroom)/i)?.[0]);
+    const sqft = parseInteger(winText.match(/[\d,]{3,}\s*(?:sq\.?\s*ft|sqft|square feet)/i)?.[0]);
+    const detail_url = extractDetailLinkFromWindow(windowHtml, sourceUrl, links, mls, address);
+    const thumbCandidates = collectImageCandidates(windowHtml, sourceUrl, [], [], []);
+    const thumbFiltered = filterPropertyImages(thumbCandidates).kept;
+    const thumbnail_url = thumbFiltered[0] ?? (mls ? findNearbyImage(html, mls, sourceUrl) : null);
+    const key = mls ?? `${address ?? ""}|${price ?? ""}|${detail_url ?? ""}`;
+    if ((!mls && !address && price == null && !detail_url) || seen.has(key)) return;
+    seen.add(key);
+    items.push(makeAnalyzedItem({
+      mls_number: mls,
+      address,
+      price,
+      status_label: status_label ? compact(status_label) : null,
+      property_type: property_type ? compact(property_type) : null,
+      beds,
+      baths,
+      sqft,
+      detail_url,
+      image_url: thumbnail_url,
+      thumbnail_url,
+      source_url: sourceUrl,
+      source_kind: "group",
+      source_window: `${source}: ${winText}`.slice(0, 500),
+      diagnostics: detail_url ? [] : ["Individual listing links not found"],
+    }));
+  };
+
+  for (const m of html.matchAll(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi)) addFromWindow(m[0], "report table row");
+  for (const m of html.matchAll(/<(?:article|li|section|div)\b[^>]*(?:listing|property|result|card|report|row)[^>]*>[\s\S]{80,5000}?<\/(?:article|li|section|div)>/gi)) addFromWindow(m[0], "listing card");
+
   const md = markdown ?? stripTags(html);
   const mlsRe = /MLS\s*(?:#|No\.?|Number|ID)?\s*[:\-]?\s*([A-Z]?\d{5,10}[A-Z0-9]?)/gi;
   let m;
-  while ((m = mlsRe.exec(md))) {
-    const mls = m[1].toUpperCase();
-    if (seenMls.has(mls)) continue;
-    seenMls.add(mls);
-    const start = Math.max(0, m.index - 500);
-    const end = Math.min(md.length, m.index + 500);
-    const win = md.slice(start, end);
-    const priceMatch = win.match(/\$\s?([\d,]{3,})(?:\s*(?:\/\s*(?:mo|month|sf|sq\s*ft))?)?/i);
-    const price = priceMatch ? Number(priceMatch[1].replace(/,/g, "")) : null;
-    const addressMatch = win.match(/\b\d{1,6}\s+[A-Z0-9][A-Za-z0-9 .#'-]{4,90}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Court|Ct|Crescent|Cres|Place|Pl|Lane|Ln|Way|Boulevard|Blvd|Highway|Hwy|Trail|Terrace|Terr|Close|Circle|Cir)\b[^\n,|]*/i);
-    const address = addressMatch ? compact(addressMatch[0]) : null;
-    const statusMatch = win.match(/\b(Active|Sold|Closed|Pending|Expired|Withdrawn|For\s+Lease|For\s+Sale|Leased|New)\b/i);
-    const status_label = statusMatch ? compact(statusMatch[0]) : null;
-    const detail_url = findNearbyDetailLink(html, mls, sourceUrl, links);
-    const image_url = findNearbyImage(html, mls, sourceUrl);
-    items.push({
-      mls_number: mls,
-      address,
-      price: Number.isFinite(price) ? price : null,
-      status_label,
-      detail_url,
-      image_url,
-      classification: "active",
-      duplicate_status: "new",
-      duplicate_listing_id: null,
-      source_url: sourceUrl,
-      source_kind: "group",
-      source_window: compact(win).slice(0, 280),
-    });
-  }
+  while ((m = mlsRe.exec(md))) addFromWindow(md.slice(Math.max(0, m.index - 700), Math.min(md.length, m.index + 700)), "rendered text MLS window");
   return items;
 }
 
