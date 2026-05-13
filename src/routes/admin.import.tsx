@@ -335,12 +335,12 @@ function Page() {
                   <tr key={it.rowId} className="border-t border-border align-top">
                     <td className="p-2"><input type="checkbox" checked={it.selected} disabled={!isImportReady(it)} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
                     <td className="p-2">
-                      {it.image_url ? (
-                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_url)}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }} />
+                      {it.image_urls[0] ? (
+                        <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_urls[0])}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                       ) : <div className="h-12 w-16 bg-muted border border-border" />}
                     </td>
                     <td className="p-2">
-                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">No address detected</span>}</div>
+                      <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">{it.source_kind === "group" ? "Address not exposed in inspected row" : "No address detected"}</span>}</div>
                       <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
                       {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
                       <div className="mt-1 text-[10px] text-muted-foreground">{it.image_urls.length} verified photos</div>
