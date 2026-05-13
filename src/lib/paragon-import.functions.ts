@@ -179,9 +179,9 @@ function isGenericTitle(title: string | null | undefined) {
 
 function parseMoney(value: string | null | undefined): number | null {
   if (!value) return null;
-  const m = String(value).match(/\$?\s*([0-9][0-9,]{3,})(?:\.\d{2})?/);
+  const m = String(value).match(/\$\s*([0-9][0-9,]*)(?:\.\d{2})?|\b([0-9][0-9,]{3,})(?:\.\d{2})?\b/);
   if (!m) return null;
-  const n = Number(m[1].replace(/,/g, ""));
+  const n = Number((m[1] ?? m[2]).replace(/,/g, ""));
   return Number.isFinite(n) ? n : null;
 }
 
