@@ -63,6 +63,7 @@ type ImageCandidate = {
 type ImageCheck = {
   url: string;
   ok: boolean;
+  loaded: boolean;
   status: number | null;
   content_type: string | null;
   content_length: number | null;
