@@ -333,8 +333,7 @@ function Page() {
                   <th className="p-2">Address / MLS</th>
                   <th className="p-2 w-24">Price</th>
                   <th className="p-2 w-32">Status</th>
-                  <th className="p-2 w-36">Classification</th>
-                  <th className="p-2 w-32">Destination</th>
+                  <th className="p-2 w-44">Detected · Confidence</th>
                   <th className="p-2 w-32">Dup status</th>
                   <th className="p-2 w-28">Source</th>
                   <th className="p-2 w-40">Action</th>
