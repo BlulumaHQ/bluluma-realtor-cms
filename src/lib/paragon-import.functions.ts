@@ -1392,6 +1392,7 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
         }
         for (const it of items) {
           it.source_kind = entry.kind === "group" ? "group" : "single";
+          if (entry.kind === "single" && !it.detail_url) it.detail_url = sourceUrl;
           it.raw_anchors = entry.raw_anchors;
           it.candidate_urls = entry.candidate_urls;
           if (entry.kind === "group" && !it.detail_url && !it.diagnostics.includes("Individual listing links not found")) it.diagnostics.push("Individual listing links not found");
@@ -1411,6 +1412,7 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
               it.image_url = parsed.image_urls[0] ?? it.thumbnail_url ?? it.image_url;
               it.image_checks = parsed.diagnostics.image_checks;
               it.diagnostics.push(...parsed.parse_warnings, `Gallery images kept: ${parsed.image_urls.length}`);
+              it.diagnostics.push(...parsed.diagnostics.rejected_images.slice(0, 25).map((img) => `Rejected image: ${img.reason} — ${img.url}`));
             } catch (detailError: any) {
               it.diagnostics.push(`Detail parse failed: ${detailError?.message ?? String(detailError)}`);
             }
