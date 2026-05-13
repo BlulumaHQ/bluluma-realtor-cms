@@ -1520,10 +1520,20 @@ export const paragonImportItem = createServerFn({ method: "POST" })
           category: dest === "commercial" ? "commercial" : "residential",
           transaction_type,
           mls_number: item.mls_number,
+          property_type: item.property_type,
+          beds: item.beds,
+          baths: item.baths,
+          sqft: item.sqft,
           features: baseFeatures,
         };
 
-    const imageUrls = parsed?.image_urls ?? [];
+    const imageUrls = parsed?.image_urls?.length ? parsed.image_urls : item.image_urls;
+    const finalAddress = parsed?.address ?? item.address;
+    const finalMls = parsed?.mls_number ?? item.mls_number;
+    const finalPrice = parsed?.price ?? item.price;
+    if (!finalAddress || !finalMls || finalPrice == null || imageUrls.length === 0) {
+      throw new Error("Needs individual listing link or manual review.");
+    }
 
     const result = await (paragonImportListing as any)({
       data: {
