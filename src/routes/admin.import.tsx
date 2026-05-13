@@ -319,7 +319,7 @@ function Page() {
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" && isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: false })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Clear</button>
-              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Import selected</button>
+              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Save selected</button>
             </div>
           </div>
           {selectedBlocked && <div className="border border-accent bg-secondary p-3 text-xs text-secondary-foreground">Needs individual listing link or manual review.</div>}
