@@ -136,7 +136,6 @@ function Page() {
         source_kind: it.source_kind,
         source_window: it.source_window,
         selected: it.duplicate_status !== "already_posted" && isImportReady({ ...it, image_urls: it.image_urls ?? (it.image_url ? [it.image_url] : []) } as Item),
-        destination: destFromClassification(it.classification),
         updateExisting: false,
         importStatus: "idle",
       })));
