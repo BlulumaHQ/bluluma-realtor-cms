@@ -1368,7 +1368,16 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
         entry.kind = isLikelyGroupUrl(url) || items.length >= 2 ? "group" : "single";
 
         if (items.length === 0) {
-          if (entry.kind === "group") {
+          const detailUrls = entry.kind === "group" ? entry.raw_anchors.filter(isLikelyDetailUrl).slice(0, 25) : [];
+          if (detailUrls.length > 0) {
+            items = detailUrls.map((detailUrl, index) => makeAnalyzedItem({
+              detail_url: detailUrl,
+              source_url: sourceUrl,
+              source_kind: "group",
+              source_window: `Detail link found in group report #${index + 1}`,
+              diagnostics: ["Listing row data came from individual detail link because the group report table was limited."],
+            }));
+          } else if (entry.kind === "group") {
             entry.diagnostics.push("Group report only — individual gallery not available");
             entry.diagnostics.push("Individual listing links not found");
           } else {
