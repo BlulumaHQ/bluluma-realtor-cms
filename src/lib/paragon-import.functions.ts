@@ -994,20 +994,20 @@ async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
     const lenStr = res.headers.get("content-length") ?? res.headers.get("content-range")?.split("/")?.[1] ?? null;
     const len = lenStr ? Number(lenStr) : null;
     if (!res.ok && res.status !== 206) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
     }
     if (!ct || !/^image\//i.test(ct)) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Not image/* (got ${ct ?? "n/a"})` };
     }
     if (/svg|gif|x-icon|vnd\.microsoft\.icon/i.test(ct)) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
     }
     if (len !== null && len > 0 && len < 8000) {
-      return { url, ok: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
+      return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
     }
-    return { url, ok: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
+    return { url, ok: true, loaded: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
   } catch (e: any) {
-    return { url, ok: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
+    return { url, ok: false, loaded: false, status: null, content_type: null, content_length: null, width: null, height: null, reason: `Fetch error: ${e?.message ?? "unknown"}` };
   }
 }
 
