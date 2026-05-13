@@ -294,12 +294,13 @@ function Page() {
               <div className="text-xs text-muted-foreground mt-1">{totals.newCount} new · {totals.dup} already posted · {totals.sel} selected</div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
-              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: true })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: i.duplicate_status !== "already_posted" && isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select new only</button>
+              <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: isImportReady(i) })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Select all</button>
               <button onClick={() => setItems((p) => p.map((i) => ({ ...i, selected: false })))} className="px-3 h-9 border border-border text-xs uppercase tracking-[0.18em] hover:bg-muted">Clear</button>
-              <button onClick={importSelected} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em]">Import selected</button>
+              <button onClick={importSelected} disabled={selectedBlocked || totals.sel === 0} className="px-4 h-9 bg-foreground text-background text-xs uppercase tracking-[0.18em] disabled:opacity-50">Import selected</button>
             </div>
           </div>
+          {selectedBlocked && <div className="border border-accent bg-secondary p-3 text-xs text-secondary-foreground">Needs individual listing link or manual review.</div>}
 
           <div className="overflow-auto border border-border">
             <table className="w-full text-xs">
@@ -320,7 +321,7 @@ function Page() {
               <tbody>
                 {items.map((it) => (
                   <tr key={it.rowId} className="border-t border-border align-top">
-                    <td className="p-2"><input type="checkbox" checked={it.selected} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
+                    <td className="p-2"><input type="checkbox" checked={it.selected} disabled={!isImportReady(it)} onChange={(e) => updateItem(it.rowId, { selected: e.target.checked })} /></td>
                     <td className="p-2">
                       {it.image_url ? (
                         <img src={`/api/image-proxy?url=${encodeURIComponent(it.image_url)}`} alt="" className="h-12 w-16 object-cover border border-border" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }} />
@@ -330,6 +331,11 @@ function Page() {
                       <div className="font-medium">{it.address ?? <span className="text-muted-foreground italic">No address detected</span>}</div>
                       <div className="font-mono text-muted-foreground">MLS {it.mls_number ?? "—"}</div>
                       {it.detail_url && <a href={it.detail_url} target="_blank" rel="noreferrer" className="text-accent underline break-all">Open detail</a>}
+                      <div className="mt-1 text-[10px] text-muted-foreground">{it.image_urls.length} verified photos</div>
+                      {!isImportReady(it) && <div className="mt-1 text-[10px] text-accent">Needs individual listing link or manual review.</div>}
+                      {(it.property_type || it.beds || it.baths || it.sqft) && <div className="mt-1 text-[10px] text-muted-foreground">{[it.property_type, it.beds ? `${it.beds} bd` : null, it.baths ? `${it.baths} ba` : null, it.sqft ? `${it.sqft.toLocaleString()} sf` : null].filter(Boolean).join(" · ")}</div>}
+                      {it.diagnostics.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Diagnostics</summary><div className="mt-1 space-y-1 text-muted-foreground">{it.diagnostics.slice(0, 8).map((d, i) => <div key={i}>{d}</div>)}</div></details>}
+                      {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
                     </td>
                     <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
                     <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
