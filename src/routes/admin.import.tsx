@@ -255,7 +255,7 @@ function Page() {
         {error && <div className="text-destructive text-sm">{error}</div>}
         <div className="flex justify-end">
           <button onClick={onAnalyze} disabled={analyzing} className="px-5 h-10 bg-foreground text-background text-sm uppercase tracking-[0.18em] disabled:opacity-50">
-            {analyzing ? "Analyzing…" : "Analyze Links"}
+            {analyzing ? "Analyzing…" : "Generate Imports"}
           </button>
         </div>
       </section>
