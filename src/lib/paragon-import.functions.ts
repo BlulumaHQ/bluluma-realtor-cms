@@ -1175,18 +1175,25 @@ function isLikelyGroupUrl(url: string) {
   return /(report|collab|multi|listingsbysearch|saved\s*search|searchresult|gallery|cma)/i.test(url);
 }
 
-function classifyItem(item: { price: number | null; status_label: string | null; source_window: string; address: string | null }, markdown: string, html: string): AnalyzedItem["classification"] {
+function classifyItem(item: { price: number | null; status_label: string | null; source_window: string; address: string | null; source_url?: string }, markdown: string, html: string): AnalyzedItem["classification"] {
   const text = `${item.source_window} ${markdown} ${stripTags(html).slice(0, 4000)}`.toLowerCase();
+  const src = (item.source_url ?? "").toLowerCase();
   const status = (item.status_label ?? "").toLowerCase();
-  const isSold = /\b(sold|closed|leased)\b/.test(status);
+  const isSold = /\b(sold|closed|leased)\b/.test(status) || /\b(sold|closed)\b/.test(src);
   const isLeaseFlag = /\b(for\s*lease|lease\s*rate|monthly\s*rent|net\s*lease|per\s*sq\.?\s*ft\b|\$\s*\d+\s*\/\s*(?:sf|sq\s*ft|month|mo)|annual\s*rent)\b/.test(text) || (item.price === 0);
-  const isCommercial = /\b(commercial|industrial|warehouse|office\s*space|retail\s*space|business\s*for\s*sale|land\s*for\s*sale|multi[-\s]*family)\b/.test(text);
-  if (isCommercial && isLeaseFlag) return "commercial_lease";
-  if (isCommercial) return "commercial_sale";
-  if (isLeaseFlag) return "commercial_lease";
-  if (isSold) return "sold";
+  const commercialKeywords = /\b(commercial|industrial|warehouse|office\s*space|retail\s*space|business\s*for\s*sale|land\s*for\s*sale|multi[-\s]*family)\b/.test(text);
+  const isBccls = /bccls\b/.test(src);
+  const isBcres = /bcres\b/.test(src);
+  if (isBccls || commercialKeywords) {
+    if (isLeaseFlag) return "commercial_lease";
+    if (item.price != null && item.price > 0) return "commercial_sale";
+    return "needs_review";
+  }
+  if (isLeaseFlag && commercialKeywords) return "commercial_lease";
+  if (isSold && (isBcres || item.address)) return "sold";
+  if (isBcres && item.address && item.price != null) return "active";
   if (!item.address && item.price == null) return "needs_review";
-  return "active";
+  return isBcres ? "active" : "needs_review";
 }
 
 function findNearbyImage(html: string, anchor: string, sourceUrl: string): string | null {
