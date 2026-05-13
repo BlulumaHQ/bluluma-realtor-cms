@@ -347,7 +347,7 @@ function Page() {
                       {!isImportReady(it) && <div className="mt-1 text-[10px] text-accent">Needs individual listing link or manual review.</div>}
                       {(it.property_type || it.beds || it.baths || it.sqft) && <div className="mt-1 text-[10px] text-muted-foreground">{[it.property_type, it.beds ? `${it.beds} bd` : null, it.baths ? `${it.baths} ba` : null, it.sqft ? `${it.sqft.toLocaleString()} sf` : null].filter(Boolean).join(" · ")}</div>}
                       {it.diagnostics.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Diagnostics</summary><div className="mt-1 space-y-1 text-muted-foreground">{it.diagnostics.slice(0, 8).map((d, i) => <div key={i}>{d}</div>)}</div></details>}
-                      {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
+                      {it.image_checks.length > 0 && <details className="mt-1 text-[10px]"><summary className="cursor-pointer text-muted-foreground">Image checks</summary><div className="mt-1 max-h-28 overflow-auto space-y-1 font-mono text-muted-foreground">{it.image_checks.slice(0, 12).map((c: any, i) => <div key={i} className={c.ok ? "text-accent" : "text-destructive"}>{c.status ?? "—"} · {c.content_type ?? "n/a"} · loaded {String(c.loaded ?? c.ok)} · {c.reason ?? "kept"}<br />{c.url}</div>)}</div></details>}
                     </td>
                     <td className="p-2">{it.price != null ? `$${it.price.toLocaleString()}` : <span className="text-muted-foreground">—</span>}</td>
                     <td className="p-2">{it.status_label ?? <span className="text-muted-foreground">—</span>}</td>
@@ -383,7 +383,7 @@ function Page() {
                       {it.source_kind === "group" && !it.detail_url && <div className="text-[10px] text-muted-foreground mt-1">Needs manual photos</div>}
                     </td>
                     <td className="p-2">
-                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing"} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
+                      <button onClick={() => importOne(it)} disabled={it.importStatus === "importing" || !isImportReady(it)} className="px-2 h-8 border border-border text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 w-full">
                         {it.importStatus === "importing" ? "Importing…" : it.importStatus === "imported" ? "Re-import" : "Import"}
                       </button>
                       {it.importStatus === "imported" && it.importResult && (
