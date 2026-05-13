@@ -270,11 +270,23 @@ function Page() {
               </tr></thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={e.url} className="border-t border-border">
+                  <tr key={e.url} className="border-t border-border align-top">
                     <td className="py-2 pr-4 font-mono break-all">{e.url}</td>
                     <td className="py-2 pr-4">{e.kind}</td>
                     <td className="py-2 pr-4">{e.itemCount}</td>
-                    <td className="py-2 pr-4 font-mono break-all">{e.finalUrl ?? "—"}</td>
+                    <td className="py-2 pr-4 font-mono break-all">
+                      {e.finalUrl ?? "—"}
+                      {(e.diagnostics.length > 0 || e.raw_anchors.length > 0 || e.candidate_urls.length > 0) && (
+                        <details className="mt-2 font-sans text-[10px] text-muted-foreground">
+                          <summary className="cursor-pointer">Source diagnostics</summary>
+                          {e.diagnostics.map((d, i) => <div key={`d-${i}`} className="mt-1 text-accent">{d}</div>)}
+                          {e.raw_anchors.length > 0 && <div className="mt-2 font-medium">Raw anchors / hrefs</div>}
+                          {e.raw_anchors.slice(0, 20).map((u, i) => <div key={`a-${i}`} className="font-mono break-all">{u}</div>)}
+                          {e.candidate_urls.length > 0 && <div className="mt-2 font-medium">Candidate URLs found</div>}
+                          {e.candidate_urls.slice(0, 20).map((u, i) => <div key={`c-${i}`} className="font-mono break-all">{u}</div>)}
+                        </details>
+                      )}
+                    </td>
                     <td className="py-2 text-destructive">{e.error ?? ""}</td>
                   </tr>
                 ))}
