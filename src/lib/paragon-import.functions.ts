@@ -1355,6 +1355,100 @@ function extractListingItems(html: string, markdown: string | null, sourceUrl: s
   return items;
 }
 
+function parseParagonPublink(rawUrl: string): { host: string; guid: string } | null {
+  try {
+    const u = new URL(rawUrl);
+    if (!/(^|\.)paragonrels\.com$/i.test(u.hostname)) return null;
+    if (!/\/publink\/view\.mvc/i.test(u.pathname)) return null;
+    const guid = u.searchParams.get("GUID") ?? u.searchParams.get("guid");
+    if (!guid) return null;
+    return { host: u.hostname, guid };
+  } catch {
+    return null;
+  }
+}
+
+type PublinkListing = {
+  listingKey: string;
+  listingId: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  reportUrl: string;
+};
+
+function parseLeftFrameHtml(html: string, host: string, guid: string): PublinkListing[] {
+  // View select
+  let view = "";
+  let layoutId = "";
+  const selMatch = html.match(/<select[^>]*id=["']ddViews["'][^>]*>([\s\S]*?)<\/select>/i);
+  if (selMatch) {
+    const optMatch = selMatch[1].match(/<option[^>]*value=["']([^"']+)["']/i);
+    if (optMatch) {
+      const val = optMatch[1];
+      if (/^c/i.test(val)) {
+        layoutId = val.replace(/^c/i, "");
+        view = "29";
+      } else {
+        view = val;
+      }
+    }
+  }
+
+  const out: PublinkListing[] = [];
+  const seen = new Set<string>();
+  const trRe = /<tr\b[^>]*\bdata-subject=["']([^"']+)["'][^>]*>/gi;
+  let m;
+  while ((m = trRe.exec(html))) {
+    let obj: any = null;
+    try {
+      obj = JSON.parse(decodeURIComponent(m[1]));
+    } catch {
+      try { obj = JSON.parse(m[1]); } catch { obj = null; }
+    }
+    if (!obj || typeof obj !== "object") continue;
+    const listingKey = obj.listingKey ?? obj.ListingKey;
+    if (!listingKey) continue;
+    if (seen.has(listingKey)) continue;
+    seen.add(listingKey);
+    const listingId = obj.listingId ?? obj.ListingId ?? null;
+    const city = obj.city ?? obj.City ?? null;
+    const state = obj.state ?? obj.State ?? null;
+    const zip = obj.zip ?? obj.Zip ?? obj.postalCode ?? null;
+    const reportUrl = `https://${host}/ParagonLS/publink/view.mvc/Report?outputtype=HTML&GUID=${encodeURIComponent(guid)}&ListingID=${encodeURIComponent(listingKey)}:0&Report=Yes&view=${encodeURIComponent(view)}&layout_id=${encodeURIComponent(layoutId)}&screenWidth=1200`;
+    out.push({ listingKey, listingId, city, state, zip, reportUrl });
+  }
+  return out;
+}
+
+async function resolveParagonPublink({ host, guid }: { host: string; guid: string }): Promise<PublinkListing[]> {
+  const leftUrl = `https://${host}/ParagonLS/publink/view.mvc/LeftFrame?GUID=${encodeURIComponent(guid)}&Report=Yes&f=l`;
+  let html = "";
+  try {
+    const res = await fetch(leftUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    if (res.ok) html = await res.text();
+  } catch {
+    html = "";
+  }
+  let listings = html ? parseLeftFrameHtml(html, host, guid) : [];
+  if (listings.length === 0) {
+    try {
+      const fc = await firecrawlScrape(leftUrl);
+      const fcHtml = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
+      listings = parseLeftFrameHtml(fcHtml, host, guid);
+    } catch {
+      // ignore; will return []
+    }
+  }
+  return listings;
+}
+
 export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
   .inputValidator((d: { realtorId: string; urls: string[] }) => d)
   .handler(async ({ data }) => {
