@@ -1458,15 +1458,38 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
     for (const url of cleaned) {
       const entry: AnalyzedEntry = { url, kind: "unknown", items: [], itemCount: 0, firecrawlUsed: false, finalUrl: null, error: null, diagnostics: [], raw_anchors: [], candidate_urls: [] };
       try {
-        const fc = await firecrawlScrape(url);
-        entry.firecrawlUsed = true;
-        entry.finalUrl = fc.finalUrl;
-        const html = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
-        const sourceUrl = fc.finalUrl ?? url;
-        entry.raw_anchors = extractRawAnchors(html, sourceUrl, fc.links);
-        entry.candidate_urls = extractCandidateUrls(html, sourceUrl, fc.links);
-        let items = extractListingItems(html, fc.markdown, fc.finalUrl ?? url, fc.links);
-        entry.kind = isLikelyGroupUrl(url) || items.length >= 2 ? "group" : "single";
+        const publink = parseParagonPublink(url);
+        let items: AnalyzedItem[] = [];
+        let html = "";
+        let fc: FirecrawlResult | null = null;
+        let sourceUrl = url;
+
+        if (publink) {
+          const listings = await resolveParagonPublink(publink);
+          if (listings.length === 0) {
+            entry.diagnostics.push("Paragon publink: LeftFrame returned no listings");
+          }
+          entry.kind = listings.length > 1 ? "group" : "single";
+          entry.finalUrl = `https://${publink.host}/ParagonLS/publink/view.mvc/LeftFrame?GUID=${publink.guid}`;
+          items = listings.map((l) => makeAnalyzedItem({
+            mls_number: l.listingId ?? null,
+            address: [l.city, l.state].filter(Boolean).join(", ") || null,
+            detail_url: l.reportUrl,
+            source_url: url,
+            source_kind: entry.kind,
+            source_window: `Paragon publink listing ${l.listingId ?? l.listingKey}`,
+          }));
+        } else {
+          fc = await firecrawlScrape(url);
+          entry.firecrawlUsed = true;
+          entry.finalUrl = fc.finalUrl;
+          html = [fc.html, fc.rawHtml].filter(Boolean).join("\n");
+          sourceUrl = fc.finalUrl ?? url;
+          entry.raw_anchors = extractRawAnchors(html, sourceUrl, fc.links);
+          entry.candidate_urls = extractCandidateUrls(html, sourceUrl, fc.links);
+          items = extractListingItems(html, fc.markdown, fc.finalUrl ?? url, fc.links);
+          entry.kind = isLikelyGroupUrl(url) || items.length >= 2 ? "group" : "single";
+        }
 
         if (items.length === 0) {
           const detailUrls = entry.kind === "group" ? entry.raw_anchors.filter(isLikelyDetailUrl).slice(0, 25) : [];
