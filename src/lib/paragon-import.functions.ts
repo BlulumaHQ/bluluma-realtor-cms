@@ -1476,7 +1476,7 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
             address: [l.city, l.state].filter(Boolean).join(", ") || null,
             detail_url: l.reportUrl,
             source_url: url,
-            source_kind: entry.kind,
+            source_kind: entry.kind === "group" ? "group" : "single",
             source_window: `Paragon publink listing ${l.listingId ?? l.listingKey}`,
           }));
         } else {
