@@ -1541,7 +1541,7 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
               it.diagnostics.push(`Detail parse failed: ${detailError?.message ?? String(detailError)}`);
             }
           }
-          it.classification = classifyItem(it, fc.markdown ?? "", html);
+          it.classification = classifyItem(it, fc?.markdown ?? "", html);
         }
         entry.items = items;
         entry.itemCount = items.length;
