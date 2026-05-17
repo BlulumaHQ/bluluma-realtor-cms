@@ -991,8 +991,25 @@ async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
       redirect: "follow",
     });
     const ct = res.headers.get("content-type");
-    const lenStr = res.headers.get("content-length") ?? res.headers.get("content-range")?.split("/")?.[1] ?? null;
-    const len = lenStr ? Number(lenStr) : null;
+    // Determine TRUE full image size:
+    // - 206 Partial Content: parse total from Content-Range ("bytes 0-1024/<total>")
+    // - 200 OK: use Content-Length (full body returned)
+    // - Otherwise: unknown — do not reject on size
+    let len: number | null = null;
+    if (res.status === 206) {
+      const cr = res.headers.get("content-range");
+      const m = cr?.match(/\/(\d+)\s*$/);
+      if (m) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > 0) len = n;
+      }
+    } else if (res.status === 200) {
+      const cl = res.headers.get("content-length");
+      if (cl) {
+        const n = Number(cl);
+        if (Number.isFinite(n) && n > 0) len = n;
+      }
+    }
     if (!res.ok && res.status !== 206) {
       return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `HTTP ${res.status}` };
     }
@@ -1002,7 +1019,7 @@ async function preflightOne(url: string, referer: string): Promise<ImageCheck> {
     if (/svg|gif|x-icon|vnd\.microsoft\.icon/i.test(ct)) {
       return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Rejected image type ${ct}` };
     }
-    if (len !== null && len > 0 && len < 8000) {
+    if (len !== null && len < 8000) {
       return { url, ok: false, loaded: false, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: `Image too small (${len} bytes)` };
     }
     return { url, ok: true, loaded: true, status: res.status, content_type: ct, content_length: len, width: null, height: null, reason: null };
