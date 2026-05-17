@@ -1683,7 +1683,9 @@ export const paragonImportItem = createServerFn({ method: "POST" })
     const finalAddress = parsed?.address ?? item.address;
     const finalMls = parsed?.mls_number ?? item.mls_number;
     const finalPrice = parsed?.price ?? item.price;
-    if (!finalAddress || !finalMls || finalPrice == null || imageUrls.length === 0) {
+    const isCommercial = item.classification.startsWith("commercial");
+    const priceMissing = finalPrice == null;
+    if (!finalAddress || !finalMls || imageUrls.length === 0 || (priceMissing && !isCommercial)) {
       throw new Error("Needs individual listing link or manual review.");
     }
 
