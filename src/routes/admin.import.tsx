@@ -58,11 +58,7 @@ type Item = {
 type Entry = { url: string; kind: "group" | "single" | "unknown"; itemCount: number; firecrawlUsed: boolean; finalUrl: string | null; error: string | null; diagnostics: string[]; raw_anchors: string[]; candidate_urls: string[] };
 
 function isImportReady(item: Item) {
-  const base = !!item.address && !!item.mls_number && item.image_urls.length > 0;
-  if (!base) return false;
-  const isCommercial = typeof item.classification === "string" && item.classification.startsWith("commercial");
-  if (isCommercial) return true;
-  return item.price != null;
+  return !!item.address && !!item.mls_number;
 }
 
 type GroupKey = "active" | "sold" | "commercial" | "needs_review";
