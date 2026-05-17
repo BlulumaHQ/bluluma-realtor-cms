@@ -1204,7 +1204,7 @@ function classifyItem(item: { price: number | null; status_label: string | null;
   if (isBccls || commercialKeywords) {
     if (isLeaseFlag) return "commercial_lease";
     if (item.price != null && item.price > 0) return "commercial_sale";
-    return "needs_review";
+    return "commercial_lease";
   }
   if (isLeaseFlag && commercialKeywords) return "commercial_lease";
   if (isSold && (isBcres || item.address)) return "sold";
@@ -1683,7 +1683,9 @@ export const paragonImportItem = createServerFn({ method: "POST" })
     const finalAddress = parsed?.address ?? item.address;
     const finalMls = parsed?.mls_number ?? item.mls_number;
     const finalPrice = parsed?.price ?? item.price;
-    if (!finalAddress || !finalMls || finalPrice == null || imageUrls.length === 0) {
+    const isCommercial = item.classification.startsWith("commercial");
+    const priceMissing = finalPrice == null;
+    if (!finalAddress || !finalMls || imageUrls.length === 0 || (priceMissing && !isCommercial)) {
       throw new Error("Needs individual listing link or manual review.");
     }
 
