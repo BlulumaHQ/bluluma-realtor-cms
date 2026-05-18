@@ -15,6 +15,7 @@ export function AdminShell({ children }: { children?: React.ReactNode }) {
               <Link to="/admin/realtors" activeProps={{ className: "text-foreground" }}>Realtors</Link>
               <Link to="/admin/listings" activeProps={{ className: "text-foreground" }}>Listings</Link>
               <Link to="/admin/import" activeProps={{ className: "text-foreground" }}>Import</Link>
+              <Link to="/admin/manual-import" activeProps={{ className: "text-foreground" }}>Manual Import</Link>
               <Link to="/admin/realtors" className="hover:text-foreground">Preview</Link>
             </nav>
           </div>

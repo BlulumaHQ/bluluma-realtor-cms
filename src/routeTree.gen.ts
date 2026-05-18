@@ -19,6 +19,7 @@ import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
 import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
+import { Route as AdminManualImportRouteImport } from './routes/admin.manual-import'
 import { Route as AdminListingsRouteImport } from './routes/admin.listings'
 import { Route as AdminImportRouteImport } from './routes/admin.import'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
@@ -73,6 +74,11 @@ const AdminRealtorsRoute = AdminRealtorsRouteImport.update({
   path: '/admin/realtors',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminManualImportRoute = AdminManualImportRouteImport.update({
+  id: '/admin/manual-import',
+  path: '/admin/manual-import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminListingsRoute = AdminListingsRouteImport.update({
   id: '/admin/listings',
   path: '/admin/listings',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
   '/listings/$slug': typeof ListingsSlugRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
     | '/listings/$slug'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
     | '/listings/$slug'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
     | '/listings/$slug'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminListingsRoute: typeof AdminListingsRoute
+  AdminManualImportRoute: typeof AdminManualImportRoute
   AdminRealtorsRoute: typeof AdminRealtorsRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
   PreviewSlugRoute: typeof PreviewSlugRoute
@@ -269,6 +282,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRealtorsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/manual-import': {
+      id: '/admin/manual-import'
+      path: '/admin/manual-import'
+      fullPath: '/admin/manual-import'
+      preLoaderRoute: typeof AdminManualImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/listings': {
       id: '/admin/listings'
       path: '/admin/listings'
@@ -323,6 +343,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
   AdminImportRoute: AdminImportRoute,
   AdminListingsRoute: AdminListingsRoute,
+  AdminManualImportRoute: AdminManualImportRoute,
   AdminRealtorsRoute: AdminRealtorsRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
   PreviewSlugRoute: PreviewSlugRoute,
