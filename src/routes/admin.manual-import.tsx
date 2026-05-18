@@ -196,7 +196,7 @@ function Page() {
             sold_price: num(fields.sold_price),
             sold_date: fields.sold_date || null,
             lease_rate: num(fields.lease_rate),
-            lease_rate_unit: fields.lease_rate || fields.lease_rate_unit ? fields.lease_rate_unit : null,
+            lease_rate_unit: fields.lease_rate_unit || null,
             available_sqft: num(fields.available_sqft),
             beds: num(fields.beds),
             baths: num(fields.baths),
