@@ -38,7 +38,7 @@ Look carefully at every visible field. Return ONE strict JSON object with this s
   "extra": { [key: string]: string|number|null }
 }
 
-Numeric fields must be plain numbers (no $ or commas). Put EVERY other visible field (taxes, lot size, parking, heating, brokerage, agent, etc.) into "extra" as key/value pairs. Return ONLY the JSON object, no prose, no code fences.`;
+Numeric fields must be plain numbers (no $ or commas). The "title" should be a short descriptive listing title if one is visible on the page (e.g. a marketing headline or property name); otherwise null. Put EVERY other visible field (taxes, lot size, parking, heating, brokerage, agent, etc.) into "extra" as key/value pairs. Return ONLY the JSON object, no prose, no code fences.`;
 
 export const manualExtractFromScreenshots = createServerFn({ method: "POST" })
   .inputValidator((d: { images: string[] /* data URLs */ }) => d)
