@@ -15,6 +15,7 @@ const EXTRACTION_PROMPT = `You are extracting real-estate listing data from one 
 Look carefully at every visible field. Return ONE strict JSON object with this shape (use null for anything that is not visible — never guess):
 
 {
+  "title": string|null,
   "address": string|null,
   "city": string|null,
   "area": string|null,
