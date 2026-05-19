@@ -200,6 +200,7 @@ type SavePayload = {
   paragonUrl: string;
   coverImageUrl: string | null; // remote URL fetched from paragon link, optional
   fields: {
+    title: string | null;
     address: string | null;
     city: string | null;
     area: string | null;
