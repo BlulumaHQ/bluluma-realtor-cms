@@ -30,6 +30,7 @@ const LISTING_TYPES: ListingTypeOpt[] = [
 ];
 
 type Fields = {
+  title: string;
   address: string;
   city: string;
   area: string;
@@ -52,6 +53,7 @@ type Fields = {
 };
 
 const EMPTY: Fields = {
+  title: "",
   address: "", city: "", area: "", postal_code: "",
   list_price: "", sold_price: "", sold_date: "",
   lease_rate: "", lease_rate_unit: "per_month",
