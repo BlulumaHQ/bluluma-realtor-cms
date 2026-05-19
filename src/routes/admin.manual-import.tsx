@@ -409,7 +409,14 @@ function FieldsForm({ fields, setFields, isCommercial, isSold, isLease }: { fiel
   // Build field order
   const blocks: React.ReactNode[] = [];
 
-  // Always-first: address / city / postal
+  // Always-first: title
+  blocks.push(
+    <div key="title" className="grid md:grid-cols-1 gap-3">
+      <Input label="Title *" value={fields.title} onChange={u("title")} placeholder="Listing title (defaults to address)" />
+    </div>
+  );
+
+  // Address / city / postal
   blocks.push(
     <div key="loc" className="grid md:grid-cols-3 gap-3">
       <Input label="Address *" value={fields.address} onChange={u("address")} />
