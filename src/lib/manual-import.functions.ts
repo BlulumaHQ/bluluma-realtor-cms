@@ -15,6 +15,7 @@ const EXTRACTION_PROMPT = `You are extracting real-estate listing data from one 
 Look carefully at every visible field. Return ONE strict JSON object with this shape (use null for anything that is not visible — never guess):
 
 {
+  "title": string|null,
   "address": string|null,
   "city": string|null,
   "area": string|null,
@@ -37,7 +38,7 @@ Look carefully at every visible field. Return ONE strict JSON object with this s
   "extra": { [key: string]: string|number|null }
 }
 
-Numeric fields must be plain numbers (no $ or commas). Put EVERY other visible field (taxes, lot size, parking, heating, brokerage, agent, etc.) into "extra" as key/value pairs. Return ONLY the JSON object, no prose, no code fences.`;
+Numeric fields must be plain numbers (no $ or commas). The "title" should be a short descriptive listing title if one is visible on the page (e.g. a marketing headline or property name); otherwise null. Put EVERY other visible field (taxes, lot size, parking, heating, brokerage, agent, etc.) into "extra" as key/value pairs. Return ONLY the JSON object, no prose, no code fences.`;
 
 export const manualExtractFromScreenshots = createServerFn({ method: "POST" })
   .inputValidator((d: { images: string[] /* data URLs */ }) => d)
@@ -199,6 +200,7 @@ type SavePayload = {
   paragonUrl: string;
   coverImageUrl: string | null; // remote URL fetched from paragon link, optional
   fields: {
+    title: string | null;
     address: string | null;
     city: string | null;
     area: string | null;
@@ -259,6 +261,8 @@ export const manualSaveListing = createServerFn({ method: "POST" })
       listing_type_choice: data.listingType,
     };
 
+    const titleValue = (f.title && f.title.trim()) || (f.address && f.address.trim()) || (f.mls_number && f.mls_number.trim()) || "Untitled listing";
+
     const baseListing: any = {
       realtor_id: data.realtorId,
       listing_type: "manual",
@@ -266,6 +270,7 @@ export const manualSaveListing = createServerFn({ method: "POST" })
       category,
       status,
       transaction_type,
+      title: titleValue,
       address: f.address,
       city: f.city,
       price,

@@ -30,6 +30,7 @@ const LISTING_TYPES: ListingTypeOpt[] = [
 ];
 
 type Fields = {
+  title: string;
   address: string;
   city: string;
   area: string;
@@ -52,6 +53,7 @@ type Fields = {
 };
 
 const EMPTY: Fields = {
+  title: "",
   address: "", city: "", area: "", postal_code: "",
   list_price: "", sold_price: "", sold_date: "",
   lease_rate: "", lease_rate_unit: "per_month",
@@ -128,6 +130,7 @@ function Page() {
       const r: any = await extractFn({ data: { images: dataUrls } });
       const e = r.extracted ?? {};
       setFields({
+        title: e.title ?? e.address ?? "",
         address: e.address ?? "",
         city: e.city ?? "",
         area: e.area ?? "",
@@ -188,6 +191,7 @@ function Page() {
           paragonUrl: paragonUrl.trim(),
           coverImageUrl: coverUrl,
           fields: {
+            title: (fields.title || fields.address || fields.mls_number || "Untitled listing").trim(),
             address: fields.address || null,
             city: fields.city || null,
             area: fields.area || null,
@@ -405,7 +409,14 @@ function FieldsForm({ fields, setFields, isCommercial, isSold, isLease }: { fiel
   // Build field order
   const blocks: React.ReactNode[] = [];
 
-  // Always-first: address / city / postal
+  // Always-first: title
+  blocks.push(
+    <div key="title" className="grid md:grid-cols-1 gap-3">
+      <Input label="Title *" value={fields.title} onChange={u("title")} placeholder="Listing title (defaults to address)" />
+    </div>
+  );
+
+  // Address / city / postal
   blocks.push(
     <div key="loc" className="grid md:grid-cols-3 gap-3">
       <Input label="Address *" value={fields.address} onChange={u("address")} />
