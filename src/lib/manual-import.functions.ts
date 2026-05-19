@@ -261,6 +261,8 @@ export const manualSaveListing = createServerFn({ method: "POST" })
       listing_type_choice: data.listingType,
     };
 
+    const titleValue = (f.title && f.title.trim()) || (f.address && f.address.trim()) || (f.mls_number && f.mls_number.trim()) || "Untitled listing";
+
     const baseListing: any = {
       realtor_id: data.realtorId,
       listing_type: "manual",
@@ -268,6 +270,7 @@ export const manualSaveListing = createServerFn({ method: "POST" })
       category,
       status,
       transaction_type,
+      title: titleValue,
       address: f.address,
       city: f.city,
       price,
