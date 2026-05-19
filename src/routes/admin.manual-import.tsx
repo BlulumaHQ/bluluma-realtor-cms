@@ -191,6 +191,7 @@ function Page() {
           paragonUrl: paragonUrl.trim(),
           coverImageUrl: coverUrl,
           fields: {
+            title: (fields.title || fields.address || fields.mls_number || "Untitled listing").trim(),
             address: fields.address || null,
             city: fields.city || null,
             area: fields.area || null,
