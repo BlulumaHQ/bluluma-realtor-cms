@@ -130,6 +130,7 @@ function Page() {
       const r: any = await extractFn({ data: { images: dataUrls } });
       const e = r.extracted ?? {};
       setFields({
+        title: e.title ?? e.address ?? "",
         address: e.address ?? "",
         city: e.city ?? "",
         area: e.area ?? "",
