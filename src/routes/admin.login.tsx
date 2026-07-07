@@ -71,6 +71,7 @@ function LoginPage() {
             className="w-full h-11 px-3 border border-border bg-background"
           />
         </label>
+        {search.setup === "1" && !error && <div className="text-sm text-green-700">Admin account created. Sign in below.</div>}
         {error && <div className="text-sm text-red-600">{error}</div>}
         <button
           type="submit"
