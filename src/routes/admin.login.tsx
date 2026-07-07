@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase/client";
 export const Route = createFileRoute("/admin/login")({
   validateSearch: (s: Record<string, unknown>) => ({
     redirect: typeof s.redirect === "string" ? s.redirect : undefined,
+    setup: typeof s.setup === "string" ? s.setup : undefined,
   }),
   component: LoginPage,
 });
