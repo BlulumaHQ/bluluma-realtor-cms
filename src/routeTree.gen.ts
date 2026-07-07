@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SoldRouteImport } from './routes/sold'
+import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ListingsRouteImport } from './routes/listings'
 import { Route as CommercialRouteImport } from './routes/commercial'
 import { Route as IndexRouteImport } from './routes/index'
@@ -28,6 +29,11 @@ import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 const SoldRoute = SoldRouteImport.update({
   id: '/sold',
   path: '/sold',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ListingsRoute = ListingsRouteImport.update({
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/commercial': typeof CommercialRoute
   '/listings': typeof ListingsRouteWithChildren
+  '/setup': typeof SetupRoute
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/commercial': typeof CommercialRoute
   '/listings': typeof ListingsRouteWithChildren
+  '/setup': typeof SetupRoute
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/commercial': typeof CommercialRoute
   '/listings': typeof ListingsRouteWithChildren
+  '/setup': typeof SetupRoute
   '/sold': typeof SoldRouteWithChildren
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/'
     | '/commercial'
     | '/listings'
+    | '/setup'
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/'
     | '/commercial'
     | '/listings'
+    | '/setup'
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/commercial'
     | '/listings'
+    | '/setup'
     | '/sold'
     | '/admin/dashboard'
     | '/admin/import'
@@ -211,6 +223,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CommercialRoute: typeof CommercialRoute
   ListingsRoute: typeof ListingsRouteWithChildren
+  SetupRoute: typeof SetupRoute
   SoldRoute: typeof SoldRouteWithChildren
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminImportRoute: typeof AdminImportRoute
@@ -230,6 +243,13 @@ declare module '@tanstack/react-router' {
       path: '/sold'
       fullPath: '/sold'
       preLoaderRoute: typeof SoldRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/listings': {
@@ -359,6 +379,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CommercialRoute: CommercialRoute,
   ListingsRoute: ListingsRouteWithChildren,
+  SetupRoute: SetupRoute,
   SoldRoute: SoldRouteWithChildren,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminImportRoute: AdminImportRoute,
