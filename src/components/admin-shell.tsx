@@ -1,6 +1,59 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 export function AdminShell({ children }: { children?: React.ReactNode }) {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [status, setStatus] = useState<"checking" | "authed" | "anon">("checking");
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      if (data.session) {
+        setEmail(data.session.user.email ?? null);
+        setStatus("authed");
+      } else {
+        setStatus("anon");
+      }
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!mounted) return;
+      if (session) {
+        setEmail(session.user.email ?? null);
+        setStatus("authed");
+      } else {
+        setEmail(null);
+        setStatus("anon");
+      }
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (status === "anon") {
+      navigate({ to: "/admin/login", search: { redirect: pathname }, replace: true });
+    }
+  }, [status, navigate, pathname]);
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/admin/login", replace: true });
+  };
+
+  if (status !== "authed") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Checking session…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -19,7 +72,15 @@ export function AdminShell({ children }: { children?: React.ReactNode }) {
               <Link to="/admin/realtors" className="hover:text-foreground">Preview</Link>
             </nav>
           </div>
-          <Link to="/" className="text-xs uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground">Exit</Link>
+          <div className="flex items-center gap-4 text-xs">
+            {email && <span className="text-muted-foreground truncate max-w-[200px]">{email}</span>}
+            <button
+              onClick={signOut}
+              className="uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-6 py-10">{children ?? <Outlet />}</main>

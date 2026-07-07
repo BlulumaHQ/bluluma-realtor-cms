@@ -20,6 +20,7 @@ import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
 import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
 import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
 import { Route as AdminManualImportRouteImport } from './routes/admin.manual-import'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminListingsRouteImport } from './routes/admin.listings'
 import { Route as AdminImportRouteImport } from './routes/admin.import'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
@@ -79,6 +80,11 @@ const AdminManualImportRoute = AdminManualImportRouteImport.update({
   path: '/admin/manual-import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminListingsRoute = AdminListingsRouteImport.update({
   id: '/admin/listings',
   path: '/admin/listings',
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/import': typeof AdminImportRoute
   '/admin/listings': typeof AdminListingsRoute
+  '/admin/login': typeof AdminLoginRoute
   '/admin/manual-import': typeof AdminManualImportRoute
   '/admin/realtors': typeof AdminRealtorsRoute
   '/api/image-proxy': typeof ApiImageProxyRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/login'
     | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/login'
     | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/import'
     | '/admin/listings'
+    | '/admin/login'
     | '/admin/manual-import'
     | '/admin/realtors'
     | '/api/image-proxy'
@@ -203,6 +215,7 @@ export interface RootRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminImportRoute: typeof AdminImportRoute
   AdminListingsRoute: typeof AdminListingsRoute
+  AdminLoginRoute: typeof AdminLoginRoute
   AdminManualImportRoute: typeof AdminManualImportRoute
   AdminRealtorsRoute: typeof AdminRealtorsRoute
   ApiImageProxyRoute: typeof ApiImageProxyRoute
@@ -289,6 +302,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminManualImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/listings': {
       id: '/admin/listings'
       path: '/admin/listings'
@@ -343,6 +363,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
   AdminImportRoute: AdminImportRoute,
   AdminListingsRoute: AdminListingsRoute,
+  AdminLoginRoute: AdminLoginRoute,
   AdminManualImportRoute: AdminManualImportRoute,
   AdminRealtorsRoute: AdminRealtorsRoute,
   ApiImageProxyRoute: ApiImageProxyRoute,
@@ -352,13 +373,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
