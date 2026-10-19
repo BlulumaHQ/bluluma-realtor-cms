@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 export const Route = createFileRoute("/admin/login")({
-  validateSearch: (s: Record<string, unknown>) => ({
+  validateSearch: (s: Record<string, unknown>): { redirect?: string; setup?: string } => ({
     redirect: typeof s.redirect === "string" ? s.redirect : undefined,
     setup: typeof s.setup === "string" ? s.setup : undefined,
   }),
