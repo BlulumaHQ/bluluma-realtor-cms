@@ -9,36 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SoldRouteImport } from './routes/sold'
-import { Route as SetupRouteImport } from './routes/setup'
-import { Route as ListingsRouteImport } from './routes/listings'
-import { Route as CommercialRouteImport } from './routes/commercial'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CommercialRouteImport } from './routes/commercial'
+import { Route as ListingsRouteImport } from './routes/listings'
+import { Route as SetupRouteImport } from './routes/setup'
+import { Route as SoldRouteImport } from './routes/sold'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
-import { Route as SoldSlugRouteImport } from './routes/sold.$slug'
-import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
-import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
-import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
-import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
-import { Route as AdminManualImportRouteImport } from './routes/admin.manual-import'
-import { Route as AdminLoginRouteImport } from './routes/admin.login'
-import { Route as AdminListingsRouteImport } from './routes/admin.listings'
-import { Route as AdminImportRouteImport } from './routes/admin.import'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminImportRouteImport } from './routes/admin.import'
+import { Route as AdminListingsRouteImport } from './routes/admin.listings'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminManualImportRouteImport } from './routes/admin.manual-import'
+import { Route as AdminRealtorsRouteImport } from './routes/admin.realtors'
+import { Route as ApiImageProxyRouteImport } from './routes/api/image-proxy'
+import { Route as ListingsSlugRouteImport } from './routes/listings.$slug'
+import { Route as PreviewSlugRouteImport } from './routes/preview.$slug'
+import { Route as SoldSlugRouteImport } from './routes/sold.$slug'
 
-const SoldRoute = SoldRouteImport.update({
-  id: '/sold',
-  path: '/sold',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SetupRoute = SetupRouteImport.update({
-  id: '/setup',
-  path: '/setup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ListingsRoute = ListingsRouteImport.update({
-  id: '/listings',
-  path: '/listings',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommercialRoute = CommercialRouteImport.update({
@@ -46,9 +36,19 @@ const CommercialRoute = CommercialRouteImport.update({
   path: '/commercial',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ListingsRoute = ListingsRouteImport.update({
+  id: '/listings',
+  path: '/listings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupRoute = SetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoldRoute = SoldRouteImport.update({
+  id: '/sold',
+  path: '/sold',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -56,44 +56,9 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SoldSlugRoute = SoldSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => SoldRoute,
-} as any)
-const PreviewSlugRoute = PreviewSlugRouteImport.update({
-  id: '/preview/$slug',
-  path: '/preview/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ListingsSlugRoute = ListingsSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => ListingsRoute,
-} as any)
-const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
-  id: '/api/image-proxy',
-  path: '/api/image-proxy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminRealtorsRoute = AdminRealtorsRouteImport.update({
-  id: '/admin/realtors',
-  path: '/admin/realtors',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminManualImportRoute = AdminManualImportRouteImport.update({
-  id: '/admin/manual-import',
-  path: '/admin/manual-import',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminLoginRoute = AdminLoginRouteImport.update({
-  id: '/admin/login',
-  path: '/admin/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminListingsRoute = AdminListingsRouteImport.update({
-  id: '/admin/listings',
-  path: '/admin/listings',
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/admin/dashboard',
+  path: '/admin/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminImportRoute = AdminImportRouteImport.update({
@@ -101,10 +66,45 @@ const AdminImportRoute = AdminImportRouteImport.update({
   path: '/admin/import',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminDashboardRoute = AdminDashboardRouteImport.update({
-  id: '/admin/dashboard',
-  path: '/admin/dashboard',
+const AdminListingsRoute = AdminListingsRouteImport.update({
+  id: '/admin/listings',
+  path: '/admin/listings',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminManualImportRoute = AdminManualImportRouteImport.update({
+  id: '/admin/manual-import',
+  path: '/admin/manual-import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRealtorsRoute = AdminRealtorsRouteImport.update({
+  id: '/admin/realtors',
+  path: '/admin/realtors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImageProxyRoute = ApiImageProxyRouteImport.update({
+  id: '/api/image-proxy',
+  path: '/api/image-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ListingsSlugRoute = ListingsSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => ListingsRoute,
+} as any)
+const PreviewSlugRoute = PreviewSlugRouteImport.update({
+  id: '/preview/$slug',
+  path: '/preview/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoldSlugRoute = SoldSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => SoldRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -238,25 +238,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/sold': {
-      id: '/sold'
-      path: '/sold'
-      fullPath: '/sold'
-      preLoaderRoute: typeof SoldRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/setup': {
-      id: '/setup'
-      path: '/setup'
-      fullPath: '/setup'
-      preLoaderRoute: typeof SetupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/listings': {
-      id: '/listings'
-      path: '/listings'
-      fullPath: '/listings'
-      preLoaderRoute: typeof ListingsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/commercial': {
@@ -266,11 +252,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommercialRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/listings': {
+      id: '/listings'
+      path: '/listings'
+      fullPath: '/listings'
+      preLoaderRoute: typeof ListingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/setup': {
+      id: '/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof SetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sold': {
+      id: '/sold'
+      path: '/sold'
+      fullPath: '/sold'
+      preLoaderRoute: typeof SoldRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -280,60 +280,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sold/$slug': {
-      id: '/sold/$slug'
-      path: '/$slug'
-      fullPath: '/sold/$slug'
-      preLoaderRoute: typeof SoldSlugRouteImport
-      parentRoute: typeof SoldRoute
-    }
-    '/preview/$slug': {
-      id: '/preview/$slug'
-      path: '/preview/$slug'
-      fullPath: '/preview/$slug'
-      preLoaderRoute: typeof PreviewSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/listings/$slug': {
-      id: '/listings/$slug'
-      path: '/$slug'
-      fullPath: '/listings/$slug'
-      preLoaderRoute: typeof ListingsSlugRouteImport
-      parentRoute: typeof ListingsRoute
-    }
-    '/api/image-proxy': {
-      id: '/api/image-proxy'
-      path: '/api/image-proxy'
-      fullPath: '/api/image-proxy'
-      preLoaderRoute: typeof ApiImageProxyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/realtors': {
-      id: '/admin/realtors'
-      path: '/admin/realtors'
-      fullPath: '/admin/realtors'
-      preLoaderRoute: typeof AdminRealtorsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/manual-import': {
-      id: '/admin/manual-import'
-      path: '/admin/manual-import'
-      fullPath: '/admin/manual-import'
-      preLoaderRoute: typeof AdminManualImportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/login': {
-      id: '/admin/login'
-      path: '/admin/login'
-      fullPath: '/admin/login'
-      preLoaderRoute: typeof AdminLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/listings': {
-      id: '/admin/listings'
-      path: '/admin/listings'
-      fullPath: '/admin/listings'
-      preLoaderRoute: typeof AdminListingsRouteImport
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/admin/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/import': {
@@ -343,12 +294,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminImportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/dashboard': {
-      id: '/admin/dashboard'
-      path: '/admin/dashboard'
-      fullPath: '/admin/dashboard'
-      preLoaderRoute: typeof AdminDashboardRouteImport
+    '/admin/listings': {
+      id: '/admin/listings'
+      path: '/admin/listings'
+      fullPath: '/admin/listings'
+      preLoaderRoute: typeof AdminListingsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/manual-import': {
+      id: '/admin/manual-import'
+      path: '/admin/manual-import'
+      fullPath: '/admin/manual-import'
+      preLoaderRoute: typeof AdminManualImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/realtors': {
+      id: '/admin/realtors'
+      path: '/admin/realtors'
+      fullPath: '/admin/realtors'
+      preLoaderRoute: typeof AdminRealtorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/image-proxy': {
+      id: '/api/image-proxy'
+      path: '/api/image-proxy'
+      fullPath: '/api/image-proxy'
+      preLoaderRoute: typeof ApiImageProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/listings/$slug': {
+      id: '/listings/$slug'
+      path: '/$slug'
+      fullPath: '/listings/$slug'
+      preLoaderRoute: typeof ListingsSlugRouteImport
+      parentRoute: typeof ListingsRoute
+    }
+    '/preview/$slug': {
+      id: '/preview/$slug'
+      path: '/preview/$slug'
+      fullPath: '/preview/$slug'
+      preLoaderRoute: typeof PreviewSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sold/$slug': {
+      id: '/sold/$slug'
+      path: '/$slug'
+      fullPath: '/sold/$slug'
+      preLoaderRoute: typeof SoldSlugRouteImport
+      parentRoute: typeof SoldRoute
     }
   }
 }
