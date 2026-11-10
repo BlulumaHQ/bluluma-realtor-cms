@@ -66,15 +66,34 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   return brandedErrorResponse();
 }
 
+// Platform hosts get crawler-visible noindex; custom domains stay index-eligible.
+const PLATFORM_HOST_SUFFIXES = [".lovable.app", ".workers.dev", ".pages.dev", ".netlify.app"];
+
+export function isPlatformHost(hostname: string): boolean {
+  const h = hostname.toLowerCase().replace(/\.$/, "");
+  return PLATFORM_HOST_SUFFIXES.some((s) => h.endsWith(s));
+}
+
+function withHostRobots(request: Request, response: Response): Response {
+  let host = "";
+  try { host = new URL(request.url).hostname; } catch { return response; }
+  if (!isPlatformHost(host)) return response;
+  const type = response.headers.get("content-type") ?? "";
+  if (!type.includes("text/html")) return response;
+  const headers = new Headers(response.headers);
+  headers.set("X-Robots-Tag", "noindex");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withHostRobots(request, await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
-      return brandedErrorResponse();
+      return withHostRobots(request, brandedErrorResponse());
     }
   },
 };
