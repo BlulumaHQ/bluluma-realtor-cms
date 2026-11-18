@@ -7,7 +7,7 @@ import { fileToBase64 } from "@/hooks/use-admin";
 import {
   adminListRealtors, adminListListings, adminGetListing,
   adminUpsertListing, adminDeleteListing,
-  adminAddPhoto, adminDeletePhoto, adminUpload,
+  adminAddPhoto, adminDeletePhoto, adminUpload, adminQuickUpdateListing,
 } from "@/lib/admin.functions";
 import type { Listing } from "@/lib/types";
 
@@ -34,7 +34,7 @@ function Page() {
           <h1 className="font-display text-4xl">Listings</h1>
           <div className="gold-rule mt-4 max-w-xs" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select value={realtorId} onChange={(e) => setRealtorId(e.target.value)} className="h-10 px-3 border border-border bg-background">
             <option value="">All realtors</option>
             {(realtors.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -57,22 +57,13 @@ function Page() {
 
       <div className="bg-card shadow-card divide-y divide-border">
         {(listings.data ?? []).map((l) => (
-          <div key={l.id} className="p-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 min-w-0">
-              {l.primary_image_url ? (
-                <img src={l.primary_image_url} className="h-14 w-20 object-cover" />
-              ) : <div className="h-14 w-20 bg-muted" />}
-              <div className="min-w-0">
-                <div className="font-medium truncate">{l.address ?? l.title}</div>
-                <div className="text-sm text-muted-foreground truncate">
-                  {l.city} · {l.status} · {l.category}
-                  {l.featured && " · ★ featured"}
-                  {l.show_in_sold && " · sold-page"}
-                </div>
-              </div>
-            </div>
-            <button onClick={() => { setCreating(false); setEditingId(l.id); }} className="text-sm text-accent shrink-0">Edit →</button>
-          </div>
+          <ListingRow
+            key={l.id}
+            listing={l}
+            heroCount={(listings.data ?? []).filter((x) => x.hero_featured && x.realtor_id === l.realtor_id).length}
+            onEdit={() => { setCreating(false); setEditingId(l.id); }}
+            onChanged={() => listings.refetch()}
+          />
         ))}
         {(listings.data ?? []).length === 0 && <div className="p-8 text-muted-foreground text-center">No listings.</div>}
       </div>
@@ -86,6 +77,88 @@ function Page() {
           onClose={() => { setEditingId(null); setCreating(false); listings.refetch(); }}
         />
       )}
+    </div>
+  );
+}
+
+const MAX_HERO = 3;
+
+function statusLabel(l: Listing) {
+  if (l.sold_review === "pending") return "Off market · auto-Sold " + (l.sold_publish_at ? new Date(l.sold_publish_at).toLocaleDateString("en-CA", { month: "short", day: "numeric" }) : "");
+  if (l.status === "hidden") return "Hidden";
+  if (l.status === "sold") return "Sold";
+  if (l.status === "presale") return "Presale";
+  return "Active";
+}
+
+function ListingRow({
+  listing: l, heroCount, onEdit, onChanged,
+}: { listing: Listing; heroCount: number; onEdit: () => void; onChanged: () => void }) {
+  const quick = useServerFn(adminQuickUpdateListing);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const apply = async (patch: Parameters<typeof quick>[0]["data"]["patch"]) => {
+    setBusy(true); setErr(null);
+    try { await quick({ data: { id: l.id, patch } }); onChanged(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
+
+  const isDdf = l.listing_type === "ddf";
+  const toggles: { label: string; on: boolean; disabled?: boolean; onClick: () => void }[] = [
+    {
+      label: l.hero_featured ? `Hero #${l.hero_sort ?? "–"}` : "Hero",
+      on: !!l.hero_featured,
+      disabled: !l.hero_featured && heroCount >= MAX_HERO,
+      onClick: () => apply(l.hero_featured
+        ? { hero_featured: false, hero_sort: null }
+        : { hero_featured: true, hero_sort: heroCount + 1 }),
+    },
+    { label: "Featured", on: !!l.featured, onClick: () => apply({ featured: !l.featured }) },
+    {
+      label: "Sold", on: l.status === "sold",
+      onClick: () => apply(l.status === "sold" ? { status: "active", show_in_sold: false } : { status: "sold", show_in_sold: true, featured: false, hero_featured: false, hero_sort: null }),
+    },
+    {
+      label: "Hidden", on: l.status === "hidden",
+      onClick: () => apply(l.status === "hidden" ? { status: "active" } : { status: "hidden", hero_featured: false, hero_sort: null }),
+    },
+  ];
+
+  return (
+    <div className={`p-4 space-y-3 ${busy ? "opacity-60" : ""}`}>
+      <div className="flex items-start gap-3">
+        {l.primary_image_url
+          ? <img src={l.primary_image_url} className="h-16 w-20 shrink-0 object-cover" />
+          : <div className="h-16 w-20 shrink-0 bg-muted" />}
+        <div className="min-w-0 flex-1">
+          <div className="font-medium leading-snug break-words">{l.address ?? l.title}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{l.city}</span>
+            {l.mls_number && <span>· {l.mls_number}</span>}
+            <span className={`px-1.5 py-0.5 border ${l.sold_review === "pending" ? "border-amber-500 text-amber-700" : "border-border"}`}>{statusLabel(l)}</span>
+            {isDdf && <span className="px-1.5 py-0.5 bg-foreground text-background">CREA</span>}
+          </div>
+        </div>
+        <button onClick={onEdit} className="text-sm text-accent shrink-0 pt-0.5">Edit →</button>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {toggles.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            disabled={busy || t.disabled}
+            onClick={t.onClick}
+            className={`h-10 text-xs uppercase tracking-[0.12em] border transition ${
+              t.on ? "bg-foreground text-background border-foreground" : "bg-background border-border"
+            } disabled:opacity-40`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {err && <div className="text-xs text-destructive">{err}</div>}
     </div>
   );
 }
@@ -160,13 +233,18 @@ function ListingEditor({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 z-50 overflow-y-auto" onClick={onClose}>
-      <div className="bg-background w-full max-w-4xl my-8 p-8 shadow-luxury" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-background w-full max-w-4xl my-4 md:my-8 p-5 md:p-8 shadow-luxury" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="font-display text-2xl">{isNew ? "New listing" : "Edit listing"}</h2>
           <button onClick={onClose} className="text-muted-foreground">Close</button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        {current.listing_type === "ddf" && (
+          <div className="mb-5 border border-border bg-muted/40 p-3 text-sm">
+            CREA listing — address, price, beds/baths, sqft and description update automatically from CREA every few minutes. Edits to those fields will be overwritten.
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Realtor">
             <select className="input" value={current.realtor_id ?? ""} onChange={(e) => update({ realtor_id: e.target.value })}>
               {realtors.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -182,7 +260,8 @@ function ListingEditor({
             <select className="input" value={current.status ?? ""} onChange={(e) => update({ status: e.target.value })}>
               <option value="active">active</option>
               <option value="sold">sold</option>
-              <option value="archived">archived</option>
+              <option value="presale">presale</option>
+              <option value="hidden">hidden</option>
             </select>
           </Field>
           <Field label="Category">

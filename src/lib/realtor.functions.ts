@@ -1,14 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createClient } from "@supabase/supabase-js";
+import { getPublicClient } from "./supabase/admin.server";
 import type { Realtor, Listing, ListingPhoto } from "./types";
 
-const SUPABASE_URL = "https://pnstqwyuhdzdmodeqvid.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_aN7LwltKQzntPyc4_moyQg_XSWARdPD";
-
 function sb() {
-  return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: false },
-  });
+  return getPublicClient();
 }
 
 function normalizeHost(host: string) {

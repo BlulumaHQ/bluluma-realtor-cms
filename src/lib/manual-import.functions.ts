@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { adminAuth } from "./admin-auth";
 import { getAdminClient, SUPABASE_URL } from "./supabase/admin.server";
 
 function publicUrl(bucket: string, path: string) {
@@ -40,7 +41,7 @@ Look carefully at every visible field. Return ONE strict JSON object with this s
 
 Numeric fields must be plain numbers (no $ or commas). The "title" should be a short descriptive listing title if one is visible on the page (e.g. a marketing headline or property name); otherwise null. Put EVERY other visible field (taxes, lot size, parking, heating, brokerage, agent, etc.) into "extra" as key/value pairs. Return ONLY the JSON object, no prose, no code fences.`;
 
-export const manualExtractFromScreenshots = createServerFn({ method: "POST" })
+export const manualExtractFromScreenshots = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { images: string[] /* data URLs */ }) => d)
   .handler(async ({ data }) => {
     const key = process.env.LOVABLE_API_KEY;
@@ -87,7 +88,7 @@ export const manualExtractFromScreenshots = createServerFn({ method: "POST" })
   });
 
 // --- Fetch cover image from a Paragon link ---
-export const manualFetchCover = createServerFn({ method: "POST" })
+export const manualFetchCover = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
     try {
@@ -119,7 +120,7 @@ export const manualFetchCover = createServerFn({ method: "POST" })
   });
 
 // --- Duplicate check ---
-export const manualCheckDuplicate = createServerFn({ method: "POST" })
+export const manualCheckDuplicate = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { realtorId: string; mlsNumber: string }) => d)
   .handler(async ({ data }) => {
     if (!data.mlsNumber) return { existing: null };
@@ -227,7 +228,7 @@ type SavePayload = {
   overwriteListingId?: string | null;
 };
 
-export const manualSaveListing = createServerFn({ method: "POST" })
+export const manualSaveListing = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: SavePayload) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();

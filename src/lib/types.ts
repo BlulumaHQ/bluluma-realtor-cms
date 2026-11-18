@@ -52,6 +52,12 @@ export type Listing = {
   primary_image_url: string | null;
   created_at: string;
   updated_at: string;
+  // CREA DDF sync + homepage hero (central realtor_cms)
+  ddf_listing_key?: string | null;
+  sold_review?: "pending" | "published" | "cancelled" | null;
+  sold_publish_at?: string | null;
+  hero_featured?: boolean | null;
+  hero_sort?: number | null;
 };
 
 export type ListingPhoto = {

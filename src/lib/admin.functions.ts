@@ -1,10 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createClient } from "@supabase/supabase-js";
-import { getAdminClient, SUPABASE_URL } from "./supabase/admin.server";
+import { adminAuth } from "./admin-auth";
+import { getAdminClient, getPublicClient, SUPABASE_URL } from "./supabase/admin.server";
 import type { Realtor, Listing, ListingPhoto, RealtorDomain } from "./types";
 
 const PROJECT_URL = SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_aN7LwltKQzntPyc4_moyQg_XSWARdPD";
 const REALTOR_QUERY = "select * from realtors order by name asc";
 
 type OptionalAdminInput = { password?: string } | undefined;
@@ -23,11 +22,6 @@ function publicUrl(bucket: string, path: string) {
   return `${PROJECT_URL}/storage/v1/object/public/${bucket}/${path}`;
 }
 
-function getPublicClient() {
-  return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
 
 function formatSupabaseError(error: unknown) {
   if (!error) return null;
@@ -44,7 +38,7 @@ async function readRealtorsWithDebug() {
     supabaseUrl: SUPABASE_URL,
     viteSupabaseUrlExists: Boolean(process.env.VITE_SUPABASE_URL),
     viteSupabasePublishableKeyExists: Boolean(process.env.VITE_SUPABASE_PUBLISHABLE_KEY),
-    serviceRoleKeyExists: Boolean(process.env.SERVICE_ROLE_KEY),
+    serviceRoleKeyExists: Boolean(process.env.CENTRAL_SUPABASE_SECRET_KEY),
     exactQuery: REALTOR_QUERY,
     rowsReturned: 0,
     error: null,
@@ -87,27 +81,27 @@ async function readRealtorsWithDebug() {
 }
 
 // ---------- Auth ----------
-export const verifyAdmin = createServerFn({ method: "POST" })
+export const verifyAdmin = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: OptionalAdminInput) => d ?? {})
   .handler(async () => {
     return { ok: true };
   });
 
 // ---------- Realtors ----------
-export const adminListRealtors = createServerFn({ method: "POST" })
+export const adminListRealtors = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: OptionalAdminInput) => d ?? {})
   .handler(async () => {
     const { rows } = await readRealtorsWithDebug();
     return rows;
   });
 
-export const adminListRealtorsDebug = createServerFn({ method: "POST" })
+export const adminListRealtorsDebug = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: OptionalAdminInput) => d ?? {})
   .handler(async () => {
     return readRealtorsWithDebug();
   });
 
-export const adminDashboardStats = createServerFn({ method: "POST" })
+export const adminDashboardStats = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: OptionalAdminInput) => d ?? {})
   .handler(async () => {
     const sb = getAdminClient();
@@ -141,7 +135,7 @@ export const adminDashboardStats = createServerFn({ method: "POST" })
     return { counts, realtors, recent, listingCountByRealtor: byRealtor };
   });
 
-export const adminUpsertRealtor = createServerFn({ method: "POST" })
+export const adminUpsertRealtor = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; realtor: Partial<Realtor> }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -152,7 +146,7 @@ export const adminUpsertRealtor = createServerFn({ method: "POST" })
     return row as Realtor;
   });
 
-export const adminListDomains = createServerFn({ method: "POST" })
+export const adminListDomains = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; realtorId?: string }) => d ?? {})
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -163,7 +157,7 @@ export const adminListDomains = createServerFn({ method: "POST" })
     return rows as RealtorDomain[];
   });
 
-export const adminUpsertDomain = createServerFn({ method: "POST" })
+export const adminUpsertDomain = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; domain: Partial<RealtorDomain> }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -175,7 +169,7 @@ export const adminUpsertDomain = createServerFn({ method: "POST" })
     return row;
   });
 
-export const adminDeleteDomain = createServerFn({ method: "POST" })
+export const adminDeleteDomain = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; id: string }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -185,7 +179,7 @@ export const adminDeleteDomain = createServerFn({ method: "POST" })
   });
 
 // ---------- Listings ----------
-export const adminListListings = createServerFn({ method: "POST" })
+export const adminListListings = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; realtorId?: string } | undefined) => d ?? {})
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -196,7 +190,7 @@ export const adminListListings = createServerFn({ method: "POST" })
     return rows as Listing[];
   });
 
-export const adminGetListing = createServerFn({ method: "POST" })
+export const adminGetListing = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; id: string }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -205,7 +199,7 @@ export const adminGetListing = createServerFn({ method: "POST" })
     return { listing: l as Listing, photos: (photos ?? []) as ListingPhoto[] };
   });
 
-export const adminUpsertListing = createServerFn({ method: "POST" })
+export const adminUpsertListing = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; listing: Partial<Listing> }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -216,7 +210,28 @@ export const adminUpsertListing = createServerFn({ method: "POST" })
     return row as Listing;
   });
 
-export const adminDeleteListing = createServerFn({ method: "POST" })
+// Quick toggles from the listing list (Hero / Featured / Hidden / Sold)
+type QuickPatch = Partial<Pick<Listing, "featured" | "hero_featured" | "hero_sort" | "status" | "show_in_sold">>;
+export const adminQuickUpdateListing = createServerFn({ method: "POST" }).middleware([adminAuth])
+  .inputValidator((d: { id: string; patch: QuickPatch }) => {
+    const allowed = ["featured", "hero_featured", "hero_sort", "status", "show_in_sold"];
+    const patch = Object.fromEntries(Object.entries(d.patch ?? {}).filter(([k]) => allowed.includes(k)));
+    if (patch.status && !["active", "sold", "hidden", "presale"].includes(String(patch.status))) {
+      throw new Error("Invalid status");
+    }
+    return { id: d.id, patch };
+  })
+  .handler(async ({ data }) => {
+    const sb = getAdminClient();
+    const patch: Record<string, unknown> = { ...data.patch, updated_at: new Date().toISOString() };
+    // Manually setting a status settles any pending off-market review
+    if (patch.status) patch.sold_review = patch.status === "sold" ? "published" : null;
+    const { data: row, error } = await sb.from("listings").update(patch).eq("id", data.id).select("*").single();
+    if (error) throw error;
+    return row as Listing;
+  });
+
+export const adminDeleteListing = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; id: string }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -226,7 +241,7 @@ export const adminDeleteListing = createServerFn({ method: "POST" })
   });
 
 // ---------- Photos ----------
-export const adminAddPhoto = createServerFn({ method: "POST" })
+export const adminAddPhoto = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; listingId: string; image_url: string; alt_text?: string; sort_order?: number }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -240,7 +255,7 @@ export const adminAddPhoto = createServerFn({ method: "POST" })
     return row;
   });
 
-export const adminDeletePhoto = createServerFn({ method: "POST" })
+export const adminDeletePhoto = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; id: string }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -250,7 +265,7 @@ export const adminDeletePhoto = createServerFn({ method: "POST" })
   });
 
 // ---------- Uploads (base64 -> storage) ----------
-export const adminUpload = createServerFn({ method: "POST" })
+export const adminUpload = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { password?: string; bucket: "listing-photos" | "realtor-assets" | "listing-pdfs"; path: string; contentType: string; base64: string }) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();

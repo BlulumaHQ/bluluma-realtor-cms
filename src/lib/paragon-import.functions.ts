@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { adminAuth } from "./admin-auth";
 import { getAdminClient, SUPABASE_URL } from "./supabase/admin.server";
 import type { Listing } from "./types";
 
@@ -841,7 +842,7 @@ async function firecrawlScrape(url: string): Promise<FirecrawlResult> {
   };
 }
 
-export const paragonParseUrl = createServerFn({ method: "POST" })
+export const paragonParseUrl = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { url: string }) => d)
   .handler(async ({ data }) => {
     const url = data.url.trim();
@@ -1066,7 +1067,7 @@ async function downloadAndStore(sb: ReturnType<typeof getAdminClient>, url: stri
   }
 }
 
-export const paragonImportListing = createServerFn({ method: "POST" })
+export const paragonImportListing = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: ImportPayload) => d)
   .handler(async ({ data }) => {
     const sb = getAdminClient();
@@ -1466,7 +1467,7 @@ async function resolveParagonPublink({ host, guid }: { host: string; guid: strin
   return listings;
 }
 
-export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
+export const paragonAnalyzeLinks = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: { realtorId: string; urls: string[] }) => d)
   .handler(async ({ data }) => {
     const cleaned = Array.from(new Set(data.urls.flatMap((u) => String(u).split(/\n+/)).map((u) => u.trim()).filter(Boolean)));
@@ -1609,7 +1610,7 @@ export const paragonAnalyzeLinks = createServerFn({ method: "POST" })
 // the partial group-only data and flags it for manual photo upload.
 // =====================================================================
 
-export const paragonImportItem = createServerFn({ method: "POST" })
+export const paragonImportItem = createServerFn({ method: "POST" }).middleware([adminAuth])
   .inputValidator((d: {
     realtorId: string;
     item: AnalyzedItem;
